@@ -1,0 +1,31 @@
+[package]
+name = "cdb64"
+version = "0.1.0"
+edition = "2024"
+authors = ["Jiseok CHOI <jiseok.dev@gmail.com>"]
+license = "MIT"
+description = "A Rust implementation of the cdb (constant database) format with 64-bit support."
+repository = "https://github.com/ever0de/cdb64-rs"
+keywords = ["cdb", "database", "hash", "kvstore"]
+categories = ["database"]
+readme = "../README.md"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+mmap = ["memmap2"]
+
+[dependencies]
+thiserror = "2.0.12"
+memmap2 = { version = "0.9.4", optional = true }
+
+[dev-dependencies]
+tempfile = "3.10.1"
+criterion = "0.6"
+rand = "0.9"
+
+[[bench]]
+name = "cdb_benchmarks"
+harness = false
