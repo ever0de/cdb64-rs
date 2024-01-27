@@ -1,0 +1,11 @@
+[package]
+name = "cdb64"
+version = "0.1.0"
+edition = "2021"
+authors = ["Jiseok CHOI <jiseok.dev@gmail.com>"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+thiserror = "1.0.56"
