@@ -5,7 +5,16 @@ edition = "2021"
 authors = ["Jiseok CHOI <jiseok.dev@gmail.com>"]
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-thiserror = "1.0.56"
+thiserror = "2.0.12"
+
+[dev-dependencies]
+tempfile = "3.10.1"
+criterion = "0.5"
+rand = "0.9"
+
+[[bench]]
+name = "cdb_benchmarks"
+harness = false
