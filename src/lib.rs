@@ -18,21 +18,22 @@
 //! ### Creating and Reading a CDB File
 //!
 //! ```rust,no_run
-//! use cdb64::{CdbWriter, Cdb, Error};
+//! use cdb64::{CdbWriter, Cdb, Error, CdbHash};
 //! use tempfile::NamedTempFile;
+//! use std::fs::File;
 //!
 //! fn main() -> Result<(), Error> {
 //!     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
 //!     let path = temp_file.path();
 //!
 //!     // Create a CDB file
-//!     let mut writer = CdbWriter::create(path)?;
+//!     let mut writer = CdbWriter::<File, CdbHash>::create(path)?;
 //!     writer.put(b"hello", b"world")?;
 //!     writer.put(b"rust", b"is awesome")?;
 //!     writer.finalize()?; // After finalize, writer can still be used (but put is blocked by is_finalized)
 //!
 //!     // Open the CDB file
-//!     let cdb = Cdb::open(path)?;
+//!     let cdb = Cdb::<File, CdbHash>::open(path)?;
 //!
 //!     // Retrieve a value by key
 //!     if let Some(value) = cdb.get(b"hello")? {
@@ -49,9 +50,10 @@
 //! ### Using the Iterator
 //!
 //! ```rust,no_run
-//! use cdb64::{CdbWriter, Cdb, CdbIterator, Error};
+//! use cdb64::{CdbWriter, Cdb, CdbIterator, Error, CdbHash};
 //! use tempfile::NamedTempFile;
 //! use std::collections::HashMap;
+//! use std::fs::File;
 //!
 //! fn main() -> Result<(), Error> {
 //!     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
@@ -61,7 +63,7 @@
 //!     data.insert(b"key1".to_vec(), b"value1".to_vec());
 //!     data.insert(b"key2".to_vec(), b"value2".to_vec());
 //!
-//!     let mut writer = CdbWriter::create(path)?;
+//!     let mut writer = CdbWriter::<File, CdbHash>::create(path)?;
 //!     for (k, v) in &data {
 //!         writer.put(k, v)?;
 //!     }

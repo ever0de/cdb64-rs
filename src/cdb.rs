@@ -4,6 +4,9 @@ use std::io::{self, ErrorKind};
 use std::marker::PhantomData;
 use std::path::Path;
 
+#[cfg(feature = "mmap")]
+use memmap2::Mmap;
+
 use crate::hash::CdbHash;
 use crate::util::{read_tuple, ReaderAt};
 
@@ -54,6 +57,8 @@ pub struct Cdb<R: ReaderAt, H: Hasher + Default = CdbHash> {
     pub(crate) reader: R,
     pub(crate) header: [TableEntry; 256],
     _hasher: PhantomData<H>,
+    #[cfg(feature = "mmap")]
+    mmap: Option<Mmap>,
 }
 
 impl<H: Hasher + Default> Cdb<File, H> {
@@ -74,6 +79,20 @@ impl<H: Hasher + Default> Cdb<File, H> {
         let file = File::open(path)?;
         Self::new(file)
     }
+
+    #[cfg(feature = "mmap")]
+    pub fn open_mmap<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let file = File::open(path)?;
+        let mmap = unsafe { Mmap::map(&file)? };
+        let mut cdb = Cdb {
+            reader: file, // Keep the file for ReaderAt, though mmap will be preferred
+            header: [TableEntry::default(); 256],
+            _hasher: PhantomData,
+            mmap: Some(mmap),
+        };
+        cdb.read_header_from_mmap()?; // Read header using mmap
+        Ok(cdb)
+    }
 }
 
 impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
@@ -93,6 +112,8 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
             reader,
             header: [TableEntry::default(); 256],
             _hasher: PhantomData,
+            #[cfg(feature = "mmap")]
+            mmap: None, // mmap is not applicable for generic ReaderAt
         };
         cdb.read_header()?;
         Ok(cdb)
@@ -121,6 +142,8 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
             reader,
             header: [TableEntry::default(); 256],
             _hasher: PhantomData::<H>,
+            #[cfg(feature = "mmap")]
+            mmap: None, // mmap is not applicable for generic ReaderAt
         };
         cdb.read_header()?;
         Ok(cdb)
@@ -128,6 +151,13 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
 
     /// Reads the header from the CDB file into the `Cdb` struct.
     fn read_header(&mut self) -> io::Result<()> {
+        #[cfg(feature = "mmap")]
+        if let Some(mmap_ref) = self.mmap.as_ref() {
+            let header = Self::read_header_from_mmap_internal(mmap_ref)?;
+            self.header = header;
+            return Ok(());
+        }
+        // Fallback to reader if mmap is not enabled or not available
         let mut header_buf = [0u8; HEADER_SIZE as usize];
         self.reader.read_exact_at(&mut header_buf, 0)?;
 
@@ -149,6 +179,57 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
             };
         }
         Ok(())
+    }
+
+    #[cfg(feature = "mmap")]
+    fn read_header_from_mmap(&mut self) -> io::Result<()> {
+        if let Some(mmap_ref) = self.mmap.as_ref() {
+            self.header = Self::read_header_from_mmap_internal(mmap_ref)?;
+            Ok(())
+        } else {
+            // This should ideally not be reached if called from open_mmap
+            Err(io::Error::new(
+                ErrorKind::Other,
+                "Mmap not available for reading header",
+            ))
+        }
+    }
+
+    #[cfg(feature = "mmap")]
+    fn read_header_from_mmap_internal(mmap_ref: &Mmap) -> io::Result<[TableEntry; 256]> {
+        if mmap_ref.len() < HEADER_SIZE as usize {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "Mmap data is smaller than header size",
+            ));
+        }
+        let header_buf = &mmap_ref[0..HEADER_SIZE as usize];
+        let mut header = [TableEntry::default(); 256];
+
+        for i in 0..256 {
+            let offset_bytes: [u8; 8] =
+                header_buf[i * 16..i * 16 + 8].try_into().map_err(|_| {
+                    io::Error::new(
+                        ErrorKind::InvalidData,
+                        "Failed to slice offset from mmap header",
+                    )
+                })?;
+            let length_bytes: [u8; 8] =
+                header_buf[i * 16 + 8..i * 16 + 16]
+                    .try_into()
+                    .map_err(|_| {
+                        io::Error::new(
+                            ErrorKind::InvalidData,
+                            "Failed to slice length from mmap header",
+                        )
+                    })?;
+
+            header[i] = TableEntry {
+                offset: u64::from_le_bytes(offset_bytes),
+                length: u64::from_le_bytes(length_bytes),
+            };
+        }
+        Ok(header)
     }
 
     /// Returns the value for a given key, or `None` if it can't be found.
@@ -200,6 +281,14 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
             // Each slot entry (hash_val, data_offset_of_kv_pair) is 16 bytes (2 * u64)
             let slot_offset = table_entry.offset + slot_to_check * 16;
 
+            #[cfg(feature = "mmap")]
+            let (entry_hash, data_offset) = if let Some(mmap_ref) = self.mmap.as_ref() {
+                read_tuple_from_mmap(mmap_ref, slot_offset)?
+            } else {
+                read_tuple(&self.reader, slot_offset)?
+            };
+
+            #[cfg(not(feature = "mmap"))]
             let (entry_hash, data_offset) = read_tuple(&self.reader, slot_offset)?;
 
             if entry_hash == 0 && data_offset == 0 {
@@ -221,6 +310,12 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
     /// Reads and verifies a key, then returns its associated value.
     /// Returns `Ok(None)` if the key at `data_offset` does not match `expected_key`.
     fn get_value_at(&self, data_offset: u64, expected_key: &[u8]) -> io::Result<Option<Vec<u8>>> {
+        #[cfg(feature = "mmap")]
+        if let Some(mmap_ref) = self.mmap.as_ref() {
+            return self.get_value_at_mmap(mmap_ref, data_offset, expected_key);
+        }
+
+        // Fallback to reader-based implementation
         let (key_len, val_len) = read_tuple(&self.reader, data_offset)?;
 
         if key_len as usize != expected_key.len() {
@@ -255,6 +350,96 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
             Ok(None) // Key content mismatch
         }
     }
+
+    #[cfg(feature = "mmap")]
+    fn get_value_at_mmap(
+        &self,
+        mmap_ref: &Mmap,
+        data_offset: u64,
+        expected_key: &[u8],
+    ) -> io::Result<Option<Vec<u8>>> {
+        let (key_len, val_len) = read_tuple_from_mmap(mmap_ref, data_offset)?;
+
+        if key_len as usize != expected_key.len() {
+            return Ok(None); // Key length mismatch
+        }
+
+        if expected_key.is_empty() {
+            let value_buf = if val_len > 0 {
+                let start = (data_offset + 16) as usize;
+                let end = start + val_len as usize;
+                if end > mmap_ref.len() {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "Mmap bounds exceeded for value",
+                    ));
+                }
+                mmap_ref[start..end].to_vec()
+            } else {
+                Vec::new()
+            };
+            return Ok(Some(value_buf));
+        }
+
+        let key_start = (data_offset + 16) as usize;
+        let key_end = key_start + key_len as usize;
+
+        if key_end > mmap_ref.len() {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "Mmap bounds exceeded for key",
+            ));
+        }
+        let key_buf_slice = &mmap_ref[key_start..key_end];
+
+        if key_buf_slice == expected_key {
+            let value_buf = if val_len > 0 {
+                let val_start = key_end;
+                let val_end = val_start + val_len as usize;
+                if val_end > mmap_ref.len() {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "Mmap bounds exceeded for value",
+                    ));
+                }
+                mmap_ref[val_start..val_end].to_vec()
+            } else {
+                Vec::new()
+            };
+            Ok(Some(value_buf))
+        } else {
+            Ok(None) // Key content mismatch
+        }
+    }
+}
+
+#[cfg(feature = "mmap")]
+fn read_tuple_from_mmap(mmap: &Mmap, offset: u64) -> io::Result<(u64, u64)> {
+    let start = offset as usize;
+    let end = start + 16; // two u64s
+
+    if end > mmap.len() {
+        return Err(io::Error::new(
+            ErrorKind::UnexpectedEof,
+            "Attempted to read beyond mmap bounds for tuple",
+        ));
+    }
+
+    let bytes = &mmap[start..end];
+    let first = u64::from_le_bytes(bytes[0..8].try_into().map_err(|_| {
+        io::Error::new(
+            ErrorKind::InvalidData,
+            "Failed to slice first u64 from mmap",
+        )
+    })?);
+    let second = u64::from_le_bytes(bytes[8..16].try_into().map_err(|_| {
+        io::Error::new(
+            ErrorKind::InvalidData,
+            "Failed to slice second u64 from mmap",
+        )
+    })?);
+
+    Ok((first, second))
 }
 
 #[cfg(test)]
@@ -264,6 +449,8 @@ mod tests {
     use crate::writer::CdbWriter;
     use std::hash::Hasher as StdHasher;
     use std::io::Cursor;
+    #[cfg(feature = "mmap")]
+    use std::io::Write;
     use tempfile::NamedTempFile; // Renamed to avoid conflict, Hash was unused
 
     // Helper to create a simple CDB in memory for testing Cdb::new and Cdb::get
@@ -349,6 +536,13 @@ mod tests {
         let cdb = Cdb::<File, CdbHash>::open(path).unwrap();
         assert_eq!(cdb.get(b"file_key").unwrap().unwrap(), b"file_value");
         assert!(cdb.get(b"other_key").unwrap().is_none());
+
+        #[cfg(feature = "mmap")]
+        {
+            let cdb_mmap = Cdb::<File, CdbHash>::open_mmap(path).unwrap();
+            assert_eq!(cdb_mmap.get(b"file_key").unwrap().unwrap(), b"file_value");
+            assert!(cdb_mmap.get(b"other_key").unwrap().is_none());
+        }
     }
 
     #[derive(Clone, Default)]
@@ -398,11 +592,35 @@ mod tests {
     #[test]
     fn test_read_header_invalid_data_short() {
         let data = vec![0u8; HEADER_SIZE as usize - 10];
-        let cursor = Cursor::new(data);
+        let cursor = Cursor::new(data.clone()); // Clone data for cursor
         let result = Cdb::<_, CdbHash>::new(cursor);
         assert!(result.is_err());
         // The error comes from read_exact_at inside read_header
         assert_eq!(result.err().unwrap().kind(), ErrorKind::UnexpectedEof);
+
+        #[cfg(feature = "mmap")]
+        {
+            // For mmap, we can't directly test with a short Vec like this
+            // as Mmap::map would fail or the slice would panic.
+            // This test case is more about the ReaderAt path.
+            // A specific mmap test for short files would involve creating a small file.
+            let temp_file = NamedTempFile::new().unwrap();
+            let path = temp_file.path();
+            {
+                let mut file = File::create(path).unwrap();
+                file.write_all(&data).unwrap(); // Write insufficient data
+            }
+            let result_mmap = Cdb::<File, CdbHash>::open_mmap(path);
+            assert!(result_mmap.is_err());
+            // The error could be from Mmap::map itself if the file is too small,
+            // or from read_header_from_mmap_internal if mmap succeeds but len is too short.
+            let err_kind = result_mmap.err().unwrap().kind();
+            assert!(
+                err_kind == ErrorKind::InvalidData || err_kind == ErrorKind::Other,
+                "Unexpected error kind: {:?}",
+                err_kind
+            );
+        }
     }
 
     #[test]

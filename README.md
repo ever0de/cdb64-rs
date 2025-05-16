@@ -55,6 +55,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Mmap (Memory Mapping) Support
+
+`cdb64-rs` supports memory-mapped file access for potentially faster read performance, especially when accessing data repeatedly. Memory mapping maps a file's contents directly into the application's address space, which can reduce the overhead of system calls for I/O operations.
+
+To use the mmap feature, you need to enable it in your `Cargo.toml`:
+
+```toml
+[dependencies]
+cdb64 = { version = "*", features = ["mmap"] }
+```
+
+### Example: Opening a CDB with Mmap
+
+```rust
+use cdb64::{Cdb, CdbWriter, CdbHash};
+use std::fs::File;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let db_path = "my_database_mmap.cdb";
+
+    // First, create a database file (same as before)
+    let mut writer = CdbWriter::<File, CdbHash>::new(File::create(db_path)?)?;
+    writer.put(b"key_mmap", b"value_from_mmap")?;
+    writer.finalize()?;
+
+    // Now, open the database using mmap
+    // This requires the "mmap" feature to be enabled for cdb64
+    # #[cfg(feature = "mmap")] // This line is for documentation purposes to show it's mmap specific
+    # {
+    let cdb_mmap = Cdb::<File, CdbHash>::open_mmap(db_path)?;
+
+    if let Some(value) = cdb_mmap.get(b"key_mmap")? {
+        println!("key_mmap: {}", String::from_utf8_lossy(&value));
+        assert_eq!(value, b"value_from_mmap");
+    }
+    # }
+
+    Ok(())
+}
+```
+
+When using `Cdb::open_mmap`, the file contents are mapped into memory. Subsequent `get` operations can then read directly from this memory region, potentially offering performance benefits over standard file I/O, especially if the operating system can keep frequently accessed parts of the mapped file in RAM.
+
 ## How it Works
 
 A cdb file consists of three parts:
@@ -94,6 +137,12 @@ Benchmarks are run using Criterion.rs. The following results were obtained on a 
 * **Read Performance (from in-memory buffer)**: `CdbReader/get_from_memory`
   * Description: Reads from a cdb structure entirely in memory.
   * Time: ~3.8 s (for 10,000 lookups)
+* **Read Performance (from file with mmap, uncached)**: `CdbReader/get_from_file_mmap_uncached`
+  * Description: Reads from a cdb file using memory-mapping, re-opening and re-mapping the file for each batch.
+  * Time: ~976 µs (for 10,000 lookups)
+* **Read Performance (from file with mmap, cached)**: `CdbReader/get_from_file_mmap_cached`
+  * Description: Reads from an already open and memory-mapped cdb file.
+  * Time: ~924 µs (for 10,000 lookups)
 
 *(Note: The `get_from_memory` benchmark involves a loop of 10,000 `get` operations. The reported time is for the entire loop.)*
 
@@ -101,6 +150,8 @@ To run the benchmarks yourself:
 
 ```sh
 cargo bench
+# To include mmap benchmarks
+cargo bench --features mmap
 ```
 
 The results will be available in `target/criterion/report/index.html`.

@@ -118,6 +118,40 @@ fn cdb_read_benchmark(c: &mut Criterion) {
         })
     });
 
+    #[cfg(feature = "mmap")]
+    {
+        // Benchmark for mmap access (uncached, re-opening file)
+        group.bench_function("get_from_file_mmap_uncached", |b| {
+            b.iter_batched(
+                || {
+                    // Re-open the file and mmap in each iteration
+                    Cdb::<File, CdbHash>::open_mmap(&file_path).unwrap()
+                },
+                |cdb_mmap| {
+                    for key in keys_to_lookup.iter() {
+                        if let Some(value_bytes) = cdb_mmap.get(black_box(key)).unwrap() {
+                            black_box(value_bytes);
+                        }
+                    }
+                    // cdb_mmap is dropped here
+                },
+                criterion::BatchSize::SmallInput, // Setup cost is high
+            )
+        });
+
+        // Benchmark for mmap access (cached, file opened once)
+        let cdb_file_mmap_cached = Cdb::<File, CdbHash>::open_mmap(&file_path).unwrap();
+        group.bench_function("get_from_file_mmap_cached", |b| {
+            b.iter(|| {
+                for key in keys_to_lookup.iter() {
+                    if let Some(value_bytes) = cdb_file_mmap_cached.get(black_box(key)).unwrap() {
+                        black_box(value_bytes);
+                    }
+                }
+            })
+        });
+    }
+
     group.finish();
 }
 
