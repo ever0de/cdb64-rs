@@ -90,9 +90,14 @@ impl<R: ReaderAt> Iterator for CdbIterator<R> {
 
         match read_tuple(&self.cdb.reader, self.current_pos) {
             Ok((key_len, val_len)) => {
-                let record_data_offset = self.current_pos + 16; // Data starts after the 16-byte length tuple
+                // Convert u32 lengths to u64 for calculations involving offsets,
+                // but primarily use u32 for buffer sizes.
+                let key_len = key_len as u64;
+                let val_len = val_len as u64;
+
+                let record_data_offset = self.current_pos + 8; // Data starts after the 8-byte length tuple (u32, u32)
                 let total_record_len_without_header = key_len + val_len;
-                let total_record_len_with_header = 16 + total_record_len_without_header;
+                let total_record_len_with_header = 8 + total_record_len_without_header; // 8 for (key_len, val_len)
 
                 // Check if the full record would read past end_pos.
                 if self

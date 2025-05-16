@@ -153,8 +153,7 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
     fn read_header(&mut self) -> io::Result<()> {
         #[cfg(feature = "mmap")]
         if let Some(mmap_ref) = self.mmap.as_ref() {
-            let header = Self::read_header_from_mmap_internal(mmap_ref)?;
-            self.header = header;
+            self.header = Self::read_header_from_mmap_internal(mmap_ref)?;
             return Ok(());
         }
         // Fallback to reader if mmap is not enabled or not available
@@ -187,7 +186,6 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
             self.header = Self::read_header_from_mmap_internal(mmap_ref)?;
             Ok(())
         } else {
-            // This should ideally not be reached if called from open_mmap
             Err(io::Error::new(
                 ErrorKind::Other,
                 "Mmap not available for reading header",
@@ -270,41 +268,67 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
         let table_entry = self.header[table_idx];
 
         if table_entry.length == 0 {
-            return Ok(None); // No entries for this hash prefix
+            return Ok(None);
         }
 
-        // Probe the given hash table, starting at the calculated slot.
         let starting_slot = (hash_val >> 8) % table_entry.length;
 
         for i in 0..table_entry.length {
             let slot_to_check = (starting_slot + i) % table_entry.length;
-            // Each slot entry (hash_val, data_offset_of_kv_pair) is 16 bytes (2 * u64)
             let slot_offset = table_entry.offset + slot_to_check * 16;
 
             #[cfg(feature = "mmap")]
             let (entry_hash, data_offset) = if let Some(mmap_ref) = self.mmap.as_ref() {
                 read_tuple_from_mmap(mmap_ref, slot_offset)?
             } else {
-                read_tuple(&self.reader, slot_offset)?
+                let mut slot_buffer = [0u8; 16];
+                self.reader.read_exact_at(&mut slot_buffer, slot_offset)?;
+                let h = u64::from_le_bytes(slot_buffer[0..8].try_into().map_err(|_| {
+                    io::Error::new(
+                        ErrorKind::InvalidData,
+                        "Failed to slice entry_hash from slot",
+                    )
+                })?);
+                let d = u64::from_le_bytes(slot_buffer[8..16].try_into().map_err(|_| {
+                    io::Error::new(
+                        ErrorKind::InvalidData,
+                        "Failed to slice data_offset from slot",
+                    )
+                })?);
+                (h, d)
             };
 
             #[cfg(not(feature = "mmap"))]
-            let (entry_hash, data_offset) = read_tuple(&self.reader, slot_offset)?;
+            let (entry_hash, data_offset) = {
+                let mut slot_buffer = [0u8; 16];
+                self.reader.read_exact_at(&mut slot_buffer, slot_offset)?;
+                let h = u64::from_le_bytes(slot_buffer[0..8].try_into().map_err(|_| {
+                    io::Error::new(
+                        ErrorKind::InvalidData,
+                        "Failed to slice entry_hash from slot",
+                    )
+                })?);
+                let d = u64::from_le_bytes(slot_buffer[8..16].try_into().map_err(|_| {
+                    io::Error::new(
+                        ErrorKind::InvalidData,
+                        "Failed to slice data_offset from slot",
+                    )
+                })?);
+                (h, d)
+            };
 
             if entry_hash == 0 && data_offset == 0 {
-                // Empty slot (both hash and offset are zero)
-                return Ok(None); // Key doesn't exist beyond this point in this chain
+                return Ok(None);
             }
 
             if entry_hash == hash_val {
-                // Potential match, now verify the key
                 match self.get_value_at(data_offset, key)? {
                     Some(value) => return Ok(Some(value)),
-                    None => continue, // Hash collision, but different key
+                    None => continue,
                 }
             }
         }
-        Ok(None) // Key not found after checking all slots in the chain
+        Ok(None)
     }
 
     /// Reads and verifies a key, then returns its associated value.
@@ -315,39 +339,32 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
             return self.get_value_at_mmap(mmap_ref, data_offset, expected_key);
         }
 
-        // Fallback to reader-based implementation
         let (key_len, val_len) = read_tuple(&self.reader, data_offset)?;
 
         if key_len as usize != expected_key.len() {
-            return Ok(None); // Key length mismatch
+            return Ok(None);
         }
 
-        // Handle empty key case: if expected_key is empty and stored key_len is 0.
         if expected_key.is_empty() {
-            // This implies key_len is also 0 due to the check above.
             let mut value_buf = vec![0u8; val_len as usize];
             if val_len > 0 {
-                self.reader
-                    .read_exact_at(&mut value_buf, data_offset + 16)?;
+                self.reader.read_exact_at(&mut value_buf, data_offset + 8)?;
             }
             return Ok(Some(value_buf));
         }
 
-        // For non-empty keys:
         let mut key_buf = vec![0u8; key_len as usize];
-        // Key data starts after the 16-byte (key_len, val_len) tuple
-        self.reader.read_exact_at(&mut key_buf, data_offset + 16)?;
+        self.reader.read_exact_at(&mut key_buf, data_offset + 8)?;
 
         if key_buf == expected_key {
             let mut value_buf = vec![0u8; val_len as usize];
             if val_len > 0 {
-                // Value data starts after (key_len, val_len) tuple (16 bytes) and key_data (key_len bytes)
                 self.reader
-                    .read_exact_at(&mut value_buf, data_offset + 16 + key_len)?;
+                    .read_exact_at(&mut value_buf, data_offset + 8 + key_len as u64)?;
             }
             Ok(Some(value_buf))
         } else {
-            Ok(None) // Key content mismatch
+            Ok(None)
         }
     }
 
@@ -358,15 +375,35 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
         data_offset: u64,
         expected_key: &[u8],
     ) -> io::Result<Option<Vec<u8>>> {
-        let (key_len, val_len) = read_tuple_from_mmap(mmap_ref, data_offset)?;
+        let len_offset_usize = data_offset as usize;
+        if len_offset_usize + 8 > mmap_ref.len() {
+            return Err(io::Error::new(
+                ErrorKind::UnexpectedEof,
+                "Mmap bounds exceeded for key/value lengths",
+            ));
+        }
+
+        let key_len_bytes: [u8; 4] = mmap_ref[len_offset_usize..len_offset_usize + 4]
+            .try_into()
+            .map_err(|_| {
+                io::Error::new(ErrorKind::InvalidData, "Failed to slice key_len from mmap")
+            })?;
+        let val_len_bytes: [u8; 4] = mmap_ref[len_offset_usize + 4..len_offset_usize + 8]
+            .try_into()
+            .map_err(|_| {
+                io::Error::new(ErrorKind::InvalidData, "Failed to slice val_len from mmap")
+            })?;
+
+        let key_len = u32::from_le_bytes(key_len_bytes);
+        let val_len = u32::from_le_bytes(val_len_bytes);
 
         if key_len as usize != expected_key.len() {
-            return Ok(None); // Key length mismatch
+            return Ok(None);
         }
 
         if expected_key.is_empty() {
             let value_buf = if val_len > 0 {
-                let start = (data_offset + 16) as usize;
+                let start = (data_offset + 8) as usize;
                 let end = start + val_len as usize;
                 if end > mmap_ref.len() {
                     return Err(io::Error::new(
@@ -381,7 +418,7 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
             return Ok(Some(value_buf));
         }
 
-        let key_start = (data_offset + 16) as usize;
+        let key_start = (data_offset + 8) as usize;
         let key_end = key_start + key_len as usize;
 
         if key_end > mmap_ref.len() {
@@ -408,7 +445,7 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
             };
             Ok(Some(value_buf))
         } else {
-            Ok(None) // Key content mismatch
+            Ok(None)
         }
     }
 }
@@ -416,7 +453,7 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
 #[cfg(feature = "mmap")]
 fn read_tuple_from_mmap(mmap: &Mmap, offset: u64) -> io::Result<(u64, u64)> {
     let start = offset as usize;
-    let end = start + 16; // two u64s
+    let end = start + 16;
 
     if end > mmap.len() {
         return Err(io::Error::new(
@@ -451,9 +488,8 @@ mod tests {
     use std::io::Cursor;
     #[cfg(feature = "mmap")]
     use std::io::Write;
-    use tempfile::NamedTempFile; // Renamed to avoid conflict, Hash was unused
+    use tempfile::NamedTempFile;
 
-    // Helper to create a simple CDB in memory for testing Cdb::new and Cdb::get
     fn create_in_memory_cdb_with_hasher<H: Hasher + Default + Clone + 'static>(
         records: &[(&[u8], &[u8])],
         hasher_instance: H,
@@ -464,8 +500,8 @@ mod tests {
         for (key, value) in records {
             writer.put(key, value).unwrap();
         }
-        writer.finalize().unwrap(); // Finalize in place
-        let cursor = writer.into_inner().unwrap(); // Then consume to get the cursor
+        writer.finalize().unwrap();
+        let cursor = writer.into_inner().unwrap();
         Cdb::new_with_custom_hasher(cursor, hasher_instance).unwrap()
     }
 
@@ -529,8 +565,7 @@ mod tests {
             let file = File::create(path).unwrap();
             let mut writer = CdbWriter::<_, CdbHash>::new(file).unwrap();
             writer.put(b"file_key", b"file_value").unwrap();
-            writer.finalize().unwrap(); // Finalize in place
-                                        // Writer (and its file) is dropped here, closing the file.
+            writer.finalize().unwrap();
         }
 
         let cdb = Cdb::<File, CdbHash>::open(path).unwrap();
@@ -592,28 +627,21 @@ mod tests {
     #[test]
     fn test_read_header_invalid_data_short() {
         let data = vec![0u8; HEADER_SIZE as usize - 10];
-        let cursor = Cursor::new(data.clone()); // Clone data for cursor
+        let cursor = Cursor::new(data.clone());
         let result = Cdb::<_, CdbHash>::new(cursor);
         assert!(result.is_err());
-        // The error comes from read_exact_at inside read_header
         assert_eq!(result.err().unwrap().kind(), ErrorKind::UnexpectedEof);
 
         #[cfg(feature = "mmap")]
         {
-            // For mmap, we can't directly test with a short Vec like this
-            // as Mmap::map would fail or the slice would panic.
-            // This test case is more about the ReaderAt path.
-            // A specific mmap test for short files would involve creating a small file.
             let temp_file = NamedTempFile::new().unwrap();
             let path = temp_file.path();
             {
                 let mut file = File::create(path).unwrap();
-                file.write_all(&data).unwrap(); // Write insufficient data
+                file.write_all(&data).unwrap();
             }
             let result_mmap = Cdb::<File, CdbHash>::open_mmap(path);
             assert!(result_mmap.is_err());
-            // The error could be from Mmap::map itself if the file is too small,
-            // or from read_header_from_mmap_internal if mmap succeeds but len is too short.
             let err_kind = result_mmap.err().unwrap().kind();
             assert!(
                 err_kind == ErrorKind::InvalidData || err_kind == ErrorKind::Other,

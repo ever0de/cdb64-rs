@@ -125,24 +125,24 @@ For more detailed information, please refer to Daniel J. Bernstein's [cdb specif
 Benchmarks are run using Criterion.rs. The following results were obtained on a machine with `Apple M2 Pro` and `32GB RAM` running `Sequoia 15.4.1(24E263)`. All benchmarks use `CdbHash` (based on SipHash 1-3) and operate on a dataset of 10,000 key-value pairs, where keys are strings like "key0", "key1", ..., and values are random byte arrays of 10-200 bytes.
 
 * **Write Performance (to temporary file)**: `CdbWriter/write_temp_file`
-  * Time: ~103 ms
+  * Time: ~105.70 ms
 * **Write Performance (to in-memory buffer)**: `CdbWriter/write_in_memory`
-  * Time: ~500 µs
+  * Time: ~452.24 µs
 * **Read Performance (from file, uncached)**: `CdbReader/get_from_file_uncached`
   * Description: Reads from a cdb file, re-opening the file for each batch to minimize OS caching effects. Represents a "cold read" scenario.
-  * Time: ~18 ms
+  * Time: ~17.73 ms
 * **Read Performance (from file, cached)**: `CdbReader/get_from_file_cached`
   * Description: Reads from an already open cdb file. Represents a "warm read" scenario where parts of the file might be cached by the OS.
-  * Time: ~17.6 ms
+  * Time: ~17.67 ms
 * **Read Performance (from in-memory buffer)**: `CdbReader/get_from_memory`
   * Description: Reads from a cdb structure entirely in memory.
-  * Time: ~3.8 s (for 10,000 lookups)
+  * Time: ~900.18 ms (for 10,000 lookups)
 * **Read Performance (from file with mmap, uncached)**: `CdbReader/get_from_file_mmap_uncached`
   * Description: Reads from a cdb file using memory-mapping, re-opening and re-mapping the file for each batch.
-  * Time: ~976 µs (for 10,000 lookups)
+  * Time: ~1.00 ms (for 10,000 lookups)
 * **Read Performance (from file with mmap, cached)**: `CdbReader/get_from_file_mmap_cached`
   * Description: Reads from an already open and memory-mapped cdb file.
-  * Time: ~924 µs (for 10,000 lookups)
+  * Time: ~920.98 µs (for 10,000 lookups)
 
 *(Note: The `get_from_memory` benchmark involves a loop of 10,000 `get` operations. The reported time is for the entire loop.)*
 

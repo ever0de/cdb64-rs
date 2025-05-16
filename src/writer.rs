@@ -75,7 +75,8 @@ impl<W: Write + Seek, H: Hasher + Default> CdbWriter<W, H> {
 
         self.writer
             .seek(SeekFrom::Start(self.current_data_offset))?;
-        write_tuple(&mut self.writer, key.len() as u64, value.len() as u64)?;
+        // Write key and value lengths as u32
+        write_tuple(&mut self.writer, key.len() as u32, value.len() as u32)?;
         self.writer.write_all(key)?;
         self.writer.write_all(value)?;
 
@@ -89,7 +90,8 @@ impl<W: Write + Seek, H: Hasher + Default> CdbWriter<W, H> {
             offset: self.current_data_offset,
         });
 
-        self.current_data_offset += 16 + key.len() as u64 + value.len() as u64;
+        // Adjust offset calculation: 8 bytes for (u32, u32) lengths
+        self.current_data_offset += 8 + key.len() as u64 + value.len() as u64;
         Ok(())
     }
 
@@ -117,13 +119,14 @@ impl<W: Write + Seek, H: Hasher + Default> CdbWriter<W, H> {
 
             final_header_entries[i] = TableEntry {
                 offset: current_pos_for_hash_tables,
-                length: num_slots as u64,
+                length: num_slots as u64, // num_slots is the count of (u64, u64) pairs
             };
 
             for entry in entries_in_this_table {
                 let mut slot_idx = (entry.hash_val >> 8) % (num_slots as u64);
                 loop {
                     if slots_data[slot_idx as usize].1 == 0 {
+                        // .1 is offset, 0 means empty slot
                         slots_data[slot_idx as usize] = (entry.hash_val, entry.offset);
                         break;
                     }
@@ -134,14 +137,19 @@ impl<W: Write + Seek, H: Hasher + Default> CdbWriter<W, H> {
             self.writer
                 .seek(SeekFrom::Start(current_pos_for_hash_tables))?;
             for (hash_val, data_offset) in slots_data {
-                write_tuple(&mut self.writer, hash_val, data_offset)?;
+                // Write two u64 values directly
+                self.writer.write_all(&hash_val.to_le_bytes())?;
+                self.writer.write_all(&data_offset.to_le_bytes())?;
             }
-            current_pos_for_hash_tables += (num_slots * 16) as u64;
+            // Each slot is (u64, u64), so 16 bytes per slot. num_slots is the count of such slots.
+            current_pos_for_hash_tables += (num_slots as u64) * 16;
         }
 
         self.writer.seek(SeekFrom::Start(0))?;
         for table_entry in final_header_entries.iter() {
-            write_tuple(&mut self.writer, table_entry.offset, table_entry.length)?;
+            // Write two u64 values directly for the header
+            self.writer.write_all(&table_entry.offset.to_le_bytes())?;
+            self.writer.write_all(&table_entry.length.to_le_bytes())?;
         }
 
         self.is_finalized = true;

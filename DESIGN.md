@@ -19,14 +19,14 @@ A cdb64 file is composed of three main sections, laid out sequentially:
 | - Pointer to Hash Table 255 (pos, len)  |
 +-----------------------------------------+
 | Data Record 1                           |  (key_len, value_len, key_bytes, value_bytes)
-|  - Key Length (u64)                     |
-|  - Value Length (u64)                   |
+|  - Key Length (u32)                     |
+|  - Value Length (u32)                   |
 |  - Key Bytes                            |
 |  - Value Bytes                          |
 +-----------------------------------------+
 | Data Record 2                           |
-|  - Key Length (u64)                     |
-|  - Value Length (u64)                   |
+|  - Key Length (u32)                     |
+|  - Value Length (u32)                   |
 |  - Key Bytes                            |
 |  - Value Bytes                          |
 +-----------------------------------------+
@@ -58,11 +58,14 @@ A cdb64 file is composed of three main sections, laid out sequentially:
 
 *   Data records are stored sequentially after the header.
 *   Each record consists of:
-    1.  `key_len` (u64): Length of the key in bytes.
-    2.  `value_len` (u64): Length of the value in bytes.
+    1.  `key_len` (u32): Length of the key in bytes.
+    2.  `value_len` (u32): Length of the value in bytes.
     3.  `key`: The key itself (byte array).
     4.  `value`: The value itself (byte array).
 *   The file offset of a data record is crucial for lookups.
+*   The (key_len, value_len) pair now occupies 8 bytes (4 bytes each).
+
+The total size of a data record is `4 (key_len) + 4 (value_len) + key_len + value_len` bytes.
 
 ### 1.3. Hash Tables
 
@@ -104,8 +107,8 @@ Internal Steps:
    b. Write Data Records:
       - Iterate through `records` collected in step 2.
       - For each `(hash, key, value)`:
-         - Write `key.len()` (u64).
-         - Write `value.len()` (u64).
+         - Write `key.len()` (u32).
+         - Write `value.len()` (u32).
          - Write `key` bytes.
          - Write `value` bytes.
          - Store the `record_offset` (current file position before writing this record).
@@ -177,12 +180,12 @@ Internal Steps:
          - If `slot_hash_high_bits == hash_to_match`:
             - This is a potential match. Proceed to key comparison.
             - Seek to `slot_record_offset`.
-            - Read `record_key_len` (u64).
-            - Read `record_value_len` (u64).
+            - Read `record_key_len` (u32).
+            - Read `record_value_len` (u32).
             - If `record_key_len == search_key.len()`:
                - Read `record_key_bytes` (of `record_key_len`).
                - If `record_key_bytes == search_key`:
-                  - Key found! The value starts at `slot_record_offset + 8 (key_len_size) + 8 (val_len_size) + record_key_len`.
+                  - Key found! The value starts at `slot_record_offset + 4 (key_len_size) + 4 (val_len_size) + record_key_len`.
                   - Return a reader or the value itself (e.g., `Some(Vec<u8>)` or `Some(Box<dyn Read + Seek>)`).
       - If loop finishes without a match, key is not found. Return `None`.
 ```
@@ -218,12 +221,12 @@ Internal Steps:
 
    b. Read Record:
       - Seek to `current_data_offset`.
-      - Read `key_len` (u64).
-      - Read `value_len` (u64).
-      - The key starts at `current_data_offset + 16`.
-      - The value starts at `current_data_offset + 16 + key_len`.
+      - Read `key_len` (u32).
+      - Read `value_len` (u32).
+      - The key starts at `current_data_offset + 8`.
+      - The value starts at `current_data_offset + 8 + key_len`.
       - Create an `ItemReader` that can provide readers for the key and value.
-      - Update `current_data_offset` to point to the next record: `current_data_offset += 16 + key_len + value_len`.
+      - Update `current_data_offset` to point to the next record: `current_data_offset += 8 + key_len + value_len`.
       - Return `Ok(Some(ItemReader))`.
 ```
 
