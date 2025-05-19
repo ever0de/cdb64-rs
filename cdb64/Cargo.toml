@@ -2,16 +2,13 @@
 name = "cdb64"
 version = { workspace = true }
 edition = { workspace = true }
+repository = { workspace = true }
 authors = ["Jiseok CHOI <jiseok.dev@gmail.com>"]
 license = "MIT"
 description = "A Rust implementation of the cdb (constant database) format with 64-bit support."
-repository = "https://github.com/ever0de/cdb64-rs"
 keywords = ["cdb", "database", "hash", "kvstore"]
 categories = ["database"]
 readme = "../README.md"
-
-[lib]
-crate-type = ["cdylib", "rlib"]
 
 [features]
 default = []
