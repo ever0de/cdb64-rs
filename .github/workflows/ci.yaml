@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  check:
+    name: Cargo Check (default, mmap)
+    runs-on: ubuntu-latest
+    needs: fmt
+    strategy:
+      matrix:
+        features: ["", "mmap"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Rust (stable)
+        run: rustup toolchain install stable --profile minimal --no-self-update
+      - name: cargo check
+        run: cargo check --all-targets --features "${{ matrix.features }}"
+
+  clippy:
+    name: Clippy (all features)
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Rust (stable)
+        run: rustup toolchain install stable --profile minimal --no-self-update
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: Cargo Test (default, mmap)
+    runs-on: ubuntu-latest
+    needs: clippy
+    strategy:
+      matrix:
+        features: ["", "mmap"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Rust (stable)
+        run: rustup toolchain install stable --profile minimal --no-self-update
+      - name: cargo test
+        run: cargo test --all-targets --features "${{ matrix.features }}"
