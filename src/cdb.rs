@@ -250,14 +250,14 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
     /// 4. Otherwise, probes the hash table pointed to by the header entry. The starting slot
     ///    within this table is determined by `(hash_value >> 8) % table_length`.
     /// 5. Iterates through the slots in a linear probing sequence:
-    ///    a. Reads the (entry_hash, data_offset) pair from the current slot.
-    ///    b. If both `entry_hash` and `data_offset` are zero, it signifies an empty slot,
+    ///    1. Reads the (entry_hash, data_offset) pair from the current slot.
+    ///    2. If both `entry_hash` and `data_offset` are zero, it signifies an empty slot,
     ///       and the key is considered not found (as all entries in a chain must be contiguous).
-    ///    c. If `entry_hash` matches the hash of the input `key`:
-    ///        i. It reads the actual key-value pair from `data_offset`.
-    ///        ii. If the stored key matches the input `key`, the associated value is returned.
-    ///        iii. If the stored key does not match (hash collision), the probing continues.
-    ///    d. If `entry_hash` does not match, probing continues to the next slot.
+    ///    3. If `entry_hash` matches the hash of the input `key`:
+    ///         1. It reads the actual key-value pair from `data_offset`.
+    ///         2. If the stored key matches the input `key`, the associated value is returned.
+    ///         3. If the stored key does not match (hash collision), the probing continues.
+    ///    4. If `entry_hash` does not match, probing continues to the next slot.
     /// 6. If the entire hash table chain is traversed without finding the key, it returns `Ok(None)`.
     pub fn get(&self, key: &[u8]) -> io::Result<Option<Vec<u8>>> {
         let mut hasher = H::default();

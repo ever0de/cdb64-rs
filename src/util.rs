@@ -281,7 +281,7 @@ mod tests {
 
             if let Some(fail_at) = self.fail_on_nth_read {
                 if self.read_count.get() == fail_at {
-                    return Err(Error::new(ErrorKind::Other, "Simulated read error"));
+                    return Err(std::io::Error::other("Simulated read error"));
                 }
             }
 
