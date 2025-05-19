@@ -45,6 +45,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install Rust (stable)
         run: rustup toolchain install stable --profile minimal --no-self-update
+      - name: Install clippy
+        run: rustup component add clippy
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
