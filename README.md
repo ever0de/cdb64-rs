@@ -7,7 +7,7 @@
 * **Fast Lookups**: Retrieving values for keys is very fast.
 * **Atomic Updates**: Updates are performed atomically by replacing the database file.
 * **Efficient Space Usage**: The database structure is compact.
-* **Generic Hasher**: Supports any hash algorithm that implements the `std::hash::Hasher` trait. Defaults to SipHash 1-3.
+* **Generic Hasher**: Supports any hash algorithm that implements the `std::hash::Hasher` trait. Defaults to CdbHash (Daniel J. Bernstein).
 
 ## Usage
 
