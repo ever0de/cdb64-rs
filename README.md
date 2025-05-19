@@ -82,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Now, open the database using mmap
     // This requires the "mmap" feature to be enabled for cdb64
-    // #[cfg(feature = "mmap")] // This line is for documentation purposes to show it's mmap specific
+    #[cfg(feature = "mmap")]
     {
       let cdb_mmap = Cdb::<File, CdbHash>::open_mmap(db_path)?;
 
