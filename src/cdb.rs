@@ -186,20 +186,14 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
             self.header = Self::read_header_from_mmap_internal(mmap_ref)?;
             Ok(())
         } else {
-            Err(io::Error::new(
-                ErrorKind::Other,
-                "Mmap not available for reading header",
-            ))
+            Err(io::Error::other("Mmap not available for reading header"))
         }
     }
 
     #[cfg(feature = "mmap")]
     fn read_header_from_mmap_internal(mmap_ref: &Mmap) -> io::Result<[TableEntry; 256]> {
         if mmap_ref.len() < HEADER_SIZE as usize {
-            return Err(io::Error::new(
-                ErrorKind::InvalidData,
-                "Mmap data is smaller than header size",
-            ));
+            return Err(io::Error::other("Mmap data is smaller than header size"));
         }
         let header_buf = &mmap_ref[0..HEADER_SIZE as usize];
         let mut header = [TableEntry::default(); 256];
