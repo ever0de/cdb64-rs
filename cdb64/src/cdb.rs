@@ -304,14 +304,15 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
         if expected_key.is_empty() {
             let mut value_buf = vec![0u8; val_len as usize];
             if val_len > 0 {
-                self.reader.read_exact_at(&mut value_buf, data_offset + 8)?;
+                self.reader
+                    .read_exact_at(&mut value_buf, data_offset + 16)?;
             }
 
             return Ok(Some(value_buf));
         }
 
         let mut key_buf = vec![0u8; key_len as usize];
-        self.reader.read_exact_at(&mut key_buf, data_offset + 8)?;
+        self.reader.read_exact_at(&mut key_buf, data_offset + 16)?;
 
         if key_buf != expected_key {
             return Ok(None);
@@ -320,7 +321,7 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
         let mut value_buf = vec![0u8; val_len as usize];
         if val_len > 0 {
             self.reader
-                .read_exact_at(&mut value_buf, data_offset + 8 + key_len as u64)?;
+                .read_exact_at(&mut value_buf, data_offset + 16 + key_len)?;
         }
         Ok(Some(value_buf))
     }
@@ -333,26 +334,26 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
         expected_key: &[u8],
     ) -> io::Result<Option<Vec<u8>>> {
         let len_offset_usize = data_offset as usize;
-        if len_offset_usize + 8 > mmap_ref.len() {
+        if len_offset_usize + 16 > mmap_ref.len() {
             return Err(io::Error::new(
                 ErrorKind::UnexpectedEof,
                 "Mmap bounds exceeded for key/value lengths",
             ));
         }
 
-        let key_len_bytes: [u8; 4] = mmap_ref[len_offset_usize..len_offset_usize + 4]
+        let key_len_bytes: [u8; 8] = mmap_ref[len_offset_usize..len_offset_usize + 8]
             .try_into()
             .map_err(|_| {
                 io::Error::new(ErrorKind::InvalidData, "Failed to slice key_len from mmap")
             })?;
-        let val_len_bytes: [u8; 4] = mmap_ref[len_offset_usize + 4..len_offset_usize + 8]
+        let val_len_bytes: [u8; 8] = mmap_ref[len_offset_usize + 8..len_offset_usize + 16]
             .try_into()
             .map_err(|_| {
                 io::Error::new(ErrorKind::InvalidData, "Failed to slice val_len from mmap")
             })?;
 
-        let key_len = u32::from_le_bytes(key_len_bytes);
-        let val_len = u32::from_le_bytes(val_len_bytes);
+        let key_len = u64::from_le_bytes(key_len_bytes);
+        let val_len = u64::from_le_bytes(val_len_bytes);
 
         if key_len as usize != expected_key.len() {
             return Ok(None);
@@ -360,7 +361,7 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
 
         if expected_key.is_empty() {
             let value_buf = if val_len > 0 {
-                let start = (data_offset + 8) as usize;
+                let start = (data_offset + 16) as usize;
                 let end = start + val_len as usize;
                 if end > mmap_ref.len() {
                     return Err(io::Error::new(
@@ -375,7 +376,7 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
             return Ok(Some(value_buf));
         }
 
-        let key_start = (data_offset + 8) as usize;
+        let key_start = (data_offset + 16) as usize;
         let key_end = key_start + key_len as usize;
 
         if key_end > mmap_ref.len() {

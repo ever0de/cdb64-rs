@@ -61,8 +61,8 @@ impl<W: Write + Seek, H: Hasher + Default> CdbWriter<W, H> {
 
         self.writer
             .seek(SeekFrom::Start(self.current_data_offset))?;
-        // Write key and value lengths as u32
-        write_tuple(&mut self.writer, key.len() as u32, value.len() as u32)?;
+        // Write key and value lengths as u64
+        write_tuple(&mut self.writer, key.len() as u64, value.len() as u64)?;
         self.writer.write_all(key)?;
         self.writer.write_all(value)?;
 
@@ -76,8 +76,8 @@ impl<W: Write + Seek, H: Hasher + Default> CdbWriter<W, H> {
             offset: self.current_data_offset,
         });
 
-        // Adjust offset calculation: 8 bytes for (u32, u32) lengths
-        self.current_data_offset += 8 + key.len() as u64 + value.len() as u64;
+        // Adjust offset calculation: 16 bytes for (u64, u64) lengths
+        self.current_data_offset += 16 + key.len() as u64 + value.len() as u64;
         Ok(())
     }
 

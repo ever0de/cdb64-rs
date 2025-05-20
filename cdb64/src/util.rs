@@ -70,38 +70,36 @@ impl ReaderAt for std::io::Cursor<Vec<u8>> {
     }
 }
 
-/// Reads two u32 values (a tuple) from a `ReaderAt` at the given offset.
-/// The values are expected to be encoded in little-endian format, 4 bytes each.
-pub(crate) fn read_tuple<R: ReaderAt + ?Sized>(reader: &R, offset: u64) -> Result<(u32, u32)> {
-    let mut buffer = [0u8; 8]; // Buffer for two u32 values
+/// Reads two u64 values (a tuple) from a `ReaderAt` at the given offset.
+/// The values are expected to be encoded in little-endian format, 8 bytes each.
+pub(crate) fn read_tuple<R: ReaderAt + ?Sized>(reader: &R, offset: u64) -> Result<(u64, u64)> {
+    let mut buffer = [0u8; 16]; // Buffer for two u64 values
     reader.read_exact_at(&mut buffer, offset)?;
 
-    // Safely convert parts of the buffer to u32.
-    // These try_into calls should not fail if read_exact_at succeeded with an 8-byte buffer.
-    let first_bytes: [u8; 4] = buffer[0..4].try_into().map_err(|_| {
+    let first_bytes: [u8; 8] = buffer[0..8].try_into().map_err(|_| {
         Error::new(
             ErrorKind::InvalidData,
-            "Internal error: Failed to slice buffer for first u32",
+            "Internal error: Failed to slice buffer for first u64",
         )
     })?;
-    let second_bytes: [u8; 4] = buffer[4..8].try_into().map_err(|_| {
+    let second_bytes: [u8; 8] = buffer[8..16].try_into().map_err(|_| {
         Error::new(
             ErrorKind::InvalidData,
-            "Internal error: Failed to slice buffer for second u32",
+            "Internal error: Failed to slice buffer for second u64",
         )
     })?;
 
-    let first = u32::from_le_bytes(first_bytes);
-    let second = u32::from_le_bytes(second_bytes);
+    let first = u64::from_le_bytes(first_bytes);
+    let second = u64::from_le_bytes(second_bytes);
     Ok((first, second))
 }
 
-/// Writes two u32 values (a tuple) to a `Write` stream.
-/// The values are encoded in little-endian format, 4 bytes each.
+/// Writes two u64 values (a tuple) to a `Write` stream.
+/// The values are encoded in little-endian format, 8 bytes each.
 pub(crate) fn write_tuple<W: Write + ?Sized>(
     writer: &mut W,
-    first: u32,
-    second: u32,
+    first: u64,
+    second: u64,
 ) -> Result<()> {
     writer.write_all(&first.to_le_bytes())?;
     writer.write_all(&second.to_le_bytes())?;
@@ -204,8 +202,8 @@ mod tests {
     // Tests for read_tuple
     #[test]
     fn test_read_tuple_success() {
-        let val1: u32 = 0x05060708;
-        let val2: u32 = 0x0D0E0F10;
+        let val1: u64 = 0x05060708090A0B0C;
+        let val2: u64 = 0x0D0E0F1011121314;
         let mut bytes_vec = Vec::new();
         bytes_vec.extend_from_slice(&val1.to_le_bytes());
         bytes_vec.extend_from_slice(&val2.to_le_bytes());
@@ -217,8 +215,8 @@ mod tests {
         assert_eq!(r_val2, val2);
 
         // Test with offset
-        let val3: u32 = 0x15161718;
-        let val4: u32 = 0x1D1E1F20;
+        let val3: u64 = 0x15161718191A1B1C;
+        let val4: u64 = 0x1D1E1F2021222324;
         let mut bytes_offset_vec = Vec::new();
         bytes_offset_vec.extend_from_slice(&[0xFF, 0xFE]); // Prefix
         bytes_offset_vec.extend_from_slice(&val3.to_le_bytes());
@@ -232,17 +230,17 @@ mod tests {
 
     #[test]
     fn test_read_tuple_eof() {
-        let val1: u32 = 0x01020304;
+        let val1: u64 = 0x0102030405060708;
         let mut bytes_vec = Vec::new();
         bytes_vec.extend_from_slice(&val1.to_le_bytes());
-        // Missing the second u32
+        // Missing the second u64
         let bytes_slice = &bytes_vec[..];
 
         let result = read_tuple(&bytes_slice, 0);
         assert!(result.is_err());
         assert_eq!(result.err().unwrap().kind(), ErrorKind::UnexpectedEof);
 
-        // Not enough bytes for even one u32
+        // Not enough bytes for even one u64
         let short_bytes_slice: &[u8] = &[1, 2, 3];
         let result_short = read_tuple(&short_bytes_slice, 0);
         assert!(result_short.is_err());
@@ -252,14 +250,14 @@ mod tests {
     // Tests for write_tuple
     #[test]
     fn test_write_tuple_success() {
-        let val1: u32 = 0xA5A6A7A8;
-        let val2: u32 = 0xB5B6B7B8;
+        let val1: u64 = 0xA5A6A7A8A9AAABAC;
+        let val2: u64 = 0xB5B6B7B8B9BABBBC;
         let mut buffer = Cursor::new(Vec::new());
 
         write_tuple(&mut buffer, val1, val2).unwrap();
 
         let written_bytes = buffer.into_inner();
-        assert_eq!(written_bytes.len(), 8); // 4 bytes for each u32
+        assert_eq!(written_bytes.len(), 16); // 8 bytes for each u64
 
         let mut expected_bytes = Vec::new();
         expected_bytes.extend_from_slice(&val1.to_le_bytes());

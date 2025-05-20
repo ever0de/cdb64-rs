@@ -19,14 +19,14 @@ A cdb64 file is composed of three main sections, laid out sequentially:
 | - Pointer to Hash Table 255 (pos, len)  |
 +-----------------------------------------+
 | Data Record 1                           |  (key_len, value_len, key_bytes, value_bytes)
-|  - Key Length (u32)                     |
-|  - Value Length (u32)                   |
+|  - Key Length (u64)                     |
+|  - Value Length (u64)                   |
 |  - Key Bytes                            |
 |  - Value Bytes                          |
 +-----------------------------------------+
 | Data Record 2                           |
-|  - Key Length (u32)                     |
-|  - Value Length (u32)                   |
+|  - Key Length (u64)                     |
+|  - Value Length (u64)                   |
 |  - Key Bytes                            |
 |  - Value Bytes                          |
 +-----------------------------------------+
@@ -58,14 +58,14 @@ A cdb64 file is composed of three main sections, laid out sequentially:
 
 *   Data records are stored sequentially after the header.
 *   Each record consists of:
-    1.  `key_len` (u32): Length of the key in bytes.
-    2.  `value_len` (u32): Length of the value in bytes.
+    1.  `key_len` (u64): Length of the key in bytes.
+    2.  `value_len` (u64): Length of the value in bytes.
     3.  `key`: The key itself (byte array).
     4.  `value`: The value itself (byte array).
 *   The file offset of a data record is crucial for lookups.
-*   The (key_len, value_len) pair now occupies 8 bytes (4 bytes each).
+*   The (key_len, value_len) pair now occupies 16 bytes (8 bytes each).
 
-The total size of a data record is `4 (key_len) + 4 (value_len) + key_len + value_len` bytes.
+The total size of a data record is `8 (key_len) + 8 (value_len) + key_len + value_len` bytes.
 
 ### 1.3. Hash Tables
 
@@ -107,8 +107,8 @@ Internal Steps:
    b. Write Data Records:
       - Iterate through `records` collected in step 2.
       - For each `(hash, key, value)`:
-         - Write `key.len()` (u32).
-         - Write `value.len()` (u32).
+         - Write `key.len()` (u64).
+         - Write `value.len()` (u64).
          - Write `key` bytes.
          - Write `value` bytes.
          - Store the `record_offset` (current file position before writing this record).
@@ -180,12 +180,12 @@ Internal Steps:
          - If `slot_hash_high_bits == hash_to_match`:
             - This is a potential match. Proceed to key comparison.
             - Seek to `slot_record_offset`.
-            - Read `record_key_len` (u32).
-            - Read `record_value_len` (u32).
+            - Read `record_key_len` (u64).
+            - Read `record_value_len` (u64).
             - If `record_key_len == search_key.len()`:
                - Read `record_key_bytes` (of `record_key_len`).
                - If `record_key_bytes == search_key`:
-                  - Key found! The value starts at `slot_record_offset + 4 (key_len_size) + 4 (val_len_size) + record_key_len`.
+                  - Key found! The value starts at `slot_record_offset + 8 (key_len_size) + 8 (val_len_size) + record_key_len`.
                   - Return a reader or the value itself (e.g., `Some(Vec<u8>)` or `Some(Box<dyn Read + Seek>)`).
       - If loop finishes without a match, key is not found. Return `None`.
 ```
@@ -227,9 +227,9 @@ Internal Steps:
       - If `current_pos >= end_pos`, iteration is complete and returns `None`.
 
    b. Reading a record:
-      - Reads the key and value lengths (`u32`, `u32`) at `current_pos`.
+      - Reads the key and value lengths (`u64`, `u64`) at `current_pos`.
       - Reads the key and value bytes into `Vec<u8>`.
-      - Advances `current_pos` by the total record length (`8 + key_len + value_len`).
+      - Advances `current_pos` by the total record length (`16 + key_len + value_len`).
       - If the record would extend past `end_pos`, returns `Err(io::Error)`.
       - On success, returns `Some(Ok((key, value)))`.
       - On read error, returns `Some(Err(e))`.

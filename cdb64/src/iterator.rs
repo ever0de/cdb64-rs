@@ -53,10 +53,8 @@ impl<'a, R: ReaderAt, H: std::hash::Hasher + Default> Iterator for CdbIterator<'
 
         match read_tuple(&self.cdb.reader, self.current_pos) {
             Ok((key_len, val_len)) => {
-                let key_len = key_len as u64;
-                let val_len = val_len as u64;
-                let record_data_offset = self.current_pos + 8;
-                let total_record_len_with_header = 8 + key_len + val_len;
+                let record_data_offset = self.current_pos + 16;
+                let total_record_len_with_header = 16 + key_len + val_len;
 
                 if self
                     .current_pos
