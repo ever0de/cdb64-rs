@@ -7,13 +7,13 @@ export interface CdbEntry {
   key: Buffer
   value: Buffer
 }
-export declare class CdbWriterNode {
+export declare class CdbWriter {
   constructor(path: string)
   put(key: Buffer, value: Buffer): void
   finalize(): void
 }
-export declare class CdbNode {
-  static open(path: string): CdbNode
+export declare class Cdb {
+  static open(path: string): Cdb
   get(key: Buffer): Buffer | null
   iter(): Array<CdbEntry>
 }

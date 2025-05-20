@@ -10,17 +10,17 @@ pub struct CdbEntry {
 }
 
 #[napi]
-pub struct CdbWriterNode {
+pub struct CdbWriter {
   inner: cdb64::CdbWriter<File, CdbHash>,
 }
 
 #[napi]
-impl CdbWriterNode {
+impl CdbWriter {
   #[napi(constructor)]
   pub fn new(path: String) -> napi::Result<Self> {
     let file = File::create(&path).map_err(|e| js_err(e.into()))?;
     let writer = cdb64::CdbWriter::<_, CdbHash>::new(file).map_err(js_err)?;
-    Ok(CdbWriterNode { inner: writer })
+    Ok(CdbWriter { inner: writer })
   }
 
   #[napi]
@@ -37,16 +37,16 @@ impl CdbWriterNode {
 }
 
 #[napi]
-pub struct CdbNode {
+pub struct Cdb {
   inner: cdb64::Cdb<File, CdbHash>,
 }
 
 #[napi]
-impl CdbNode {
+impl Cdb {
   #[napi(factory)]
   pub fn open(path: String) -> napi::Result<Self> {
     let cdb = cdb64::Cdb::<_, CdbHash>::open(&path).map_err(|e| js_err(e.into()))?;
-    Ok(CdbNode { inner: cdb })
+    Ok(Cdb { inner: cdb })
   }
 
   #[napi]
