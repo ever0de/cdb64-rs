@@ -107,22 +107,6 @@ pub enum Error {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
-    /// An error occurred during data conversion, typically when trying to convert a slice to an array.
-    #[error("Data conversion error: {source} when converting to {data_type}")]
-    Convert {
-        /// The underlying slice conversion error.
-        source: std::array::TryFromSliceError,
-        /// The name of the type that the conversion was attempting to create.
-        data_type: &'static str,
-    },
-
-    /// Indicates that the database is full.
-    /// CDB files have a size limit related to internal offsets or counts.
-    #[error(
-        "Database is full: CDB files have a size limit (related to internal offsets or counts)"
-    )]
-    DatabaseFull,
-
     /// Indicates an attempt to operate on a writer that has already been finalized.
     #[error("Attempted to operate on a finalized writer")]
     WriterFinalized,
@@ -130,8 +114,4 @@ pub enum Error {
     /// Indicates an attempt to use a writer that has not been finalized yet when finalization is required.
     #[error("Writer has not been finalized yet")]
     WriterNotFinalized,
-
-    /// An internal error, often indicating a bug or unexpected state.
-    #[error("Internal error: {0}")]
-    Internal(String),
 }
