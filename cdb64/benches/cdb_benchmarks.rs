@@ -50,7 +50,6 @@ fn cdb_write_benchmark(c: &mut Criterion) {
                     .unwrap();
             }
             writer.finalize().unwrap();
-            let _cdb_data = writer.into_inner().unwrap(); // Retrieve data
         })
     });
     group.finish();

@@ -34,6 +34,7 @@ impl<H: Hasher + Default> CdbWriter<File, H> {
             .create(true)
             .truncate(true)
             .open(path)?;
+
         Self::new(file)
     }
 }
@@ -50,21 +51,6 @@ impl<W: Write + Seek, H: Hasher + Default> CdbWriter<W, H> {
             is_finalized: false,
             current_data_offset: HEADER_SIZE,
             _hasher: PhantomData,
-        })
-    }
-
-    /// Creates a new CdbWriter instance with a custom hasher.
-    pub fn new_with_custom_hasher(mut writer: W, _hasher_instance: H) -> Result<Self, Error> {
-        writer.seek(SeekFrom::Start(0))?;
-        let header_placeholder = vec![0u8; HEADER_SIZE as usize];
-        writer.write_all(&header_placeholder)?;
-
-        Ok(CdbWriter {
-            writer,
-            entries_by_table: std::array::from_fn(|_| Vec::new()),
-            is_finalized: false,
-            current_data_offset: HEADER_SIZE,
-            _hasher: PhantomData::<H>,
         })
     }
 
@@ -95,7 +81,7 @@ impl<W: Write + Seek, H: Hasher + Default> CdbWriter<W, H> {
         Ok(())
     }
 
-    fn write_footer_and_header_internal(&mut self) -> Result<(), Error> {
+    fn write_footer_and_header(&mut self) -> Result<(), Error> {
         if self.is_finalized {
             return Ok(());
         }
@@ -153,11 +139,12 @@ impl<W: Write + Seek, H: Hasher + Default> CdbWriter<W, H> {
         }
 
         self.is_finalized = true;
+
         Ok(())
     }
 
     pub fn finalize(&mut self) -> Result<(), Error> {
-        self.write_footer_and_header_internal()?;
+        self.write_footer_and_header()?;
         self.writer.flush()?;
         Ok(())
     }
@@ -172,7 +159,9 @@ impl<W: Write + Seek, H: Hasher + Default> CdbWriter<W, H> {
             // Forcing explicit finalize() call before into_inner() is cleaner.
             return Err(Error::WriterNotFinalized);
         }
+
         self.writer.flush()?; // Ensure all data is written
+
         Ok(self.writer)
     }
 }
@@ -180,9 +169,9 @@ impl<W: Write + Seek, H: Hasher + Default> CdbWriter<W, H> {
 impl<H: Hasher + Default> CdbWriter<File, H> {
     // Freeze consumes the writer, finalizes it, and reopens it as a Cdb reader.
     pub fn freeze(mut self, path_to_reopen: &Path) -> Result<Cdb<File, H>, Error> {
-        self.write_footer_and_header_internal()?;
+        self.write_footer_and_header()?;
         self.writer.flush()?;
 
-        Cdb::<File, H>::open(path_to_reopen).map_err(Error::Io)
+        Cdb::open(path_to_reopen).map_err(Error::Io)
     }
 }

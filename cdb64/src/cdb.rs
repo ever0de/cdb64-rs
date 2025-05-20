@@ -70,20 +70,16 @@ impl<H: Hasher + Default> Cdb<File, H> {
     ///
     /// This method initializes a `Cdb` instance with a `std::fs::File` as the reader
     /// and uses the specified `Hasher` (defaults to `CdbHash`).
-    ///
-    /// # Arguments
-    ///
-    /// * `path`: A type that can be converted into a `Path`, representing the location of the CDB file.
-    ///
-    /// # Errors
-    ///
-    /// Returns an `io::Error` if the file cannot be opened or if there's an issue reading
-    /// the database header.
     pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let file = File::open(path)?;
         Self::new(file)
     }
 
+    /// Opens an existing CDB database from a file at the given path using memory-mapped I/O (mmap).
+    ///
+    /// This method is only available when the `mmap` feature is enabled. It opens the file, creates a memory map,
+    /// and reads the CDB header using the mapped memory for efficient access. The returned `Cdb` instance keeps both
+    /// the file and the mmap alive for the lifetime of the object. If the header cannot be read, an error is returned.
     #[cfg(feature = "mmap")]
     pub fn open_mmap<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let file = File::open(path)?;
@@ -103,49 +99,11 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
     /// Creates a new CDB instance using the provided `ReaderAt` and a default hasher.
     ///
     /// The hasher defaults to `H::default()`.
-    ///
-    /// # Arguments
-    ///
-    /// * `reader`: An instance of a type implementing `ReaderAt`, which will be used to read data from the database.
-    ///
-    /// # Errors
-    ///
-    /// Returns an `io::Error` if the database header cannot be read from the provided `reader`.
     pub fn new(reader: R) -> io::Result<Self> {
         let mut cdb = Cdb {
             reader,
             header: [TableEntry::default(); 256],
             _hasher: PhantomData,
-            #[cfg(feature = "mmap")]
-            mmap: None, // mmap is not applicable for generic ReaderAt
-        };
-        cdb.read_header()?;
-        Ok(cdb)
-    }
-
-    /// Creates a new CDB instance using the provided `ReaderAt` and a custom hasher instance.
-    ///
-    /// This constructor is useful when you need to use a hasher that is not `Default`
-    /// or requires specific initialization.
-    ///
-    /// # Arguments
-    ///
-    /// * `reader`: An instance of a type implementing `ReaderAt`.
-    /// * `_hasher_instance`: An instance of the hasher to be used. Note: this argument is used to guide type inference
-    ///   for `H` but the actual hasher used will be `H::default()` in `get` or a new instance if you modify `get`
-    ///   to take a `&mut H`. For true custom instance usage per operation, `get` would need modification.
-    ///   A more typical approach for a pre-initialized hasher would be to pass `H` itself if `H` is `Clone`.
-    ///   Given current `get` implementation creates a new hasher via `H::default()`, this function primarily serves
-    ///   to allow specifying `H` when `H` is not `CdbHash`.
-    ///
-    /// # Errors
-    ///
-    /// Returns an `io::Error` if the database header cannot be read.
-    pub fn new_with_custom_hasher(reader: R, _hasher_instance: H) -> io::Result<Self> {
-        let mut cdb = Cdb {
-            reader,
-            header: [TableEntry::default(); 256],
-            _hasher: PhantomData::<H>,
             #[cfg(feature = "mmap")]
             mmap: None, // mmap is not applicable for generic ReaderAt
         };
@@ -348,22 +306,23 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
             if val_len > 0 {
                 self.reader.read_exact_at(&mut value_buf, data_offset + 8)?;
             }
+
             return Ok(Some(value_buf));
         }
 
         let mut key_buf = vec![0u8; key_len as usize];
         self.reader.read_exact_at(&mut key_buf, data_offset + 8)?;
 
-        if key_buf == expected_key {
-            let mut value_buf = vec![0u8; val_len as usize];
-            if val_len > 0 {
-                self.reader
-                    .read_exact_at(&mut value_buf, data_offset + 8 + key_len as u64)?;
-            }
-            Ok(Some(value_buf))
-        } else {
-            Ok(None)
+        if key_buf != expected_key {
+            return Ok(None);
         }
+
+        let mut value_buf = vec![0u8; val_len as usize];
+        if val_len > 0 {
+            self.reader
+                .read_exact_at(&mut value_buf, data_offset + 8 + key_len as u64)?;
+        }
+        Ok(Some(value_buf))
     }
 
     #[cfg(feature = "mmap")]
@@ -427,24 +386,25 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
         }
         let key_buf_slice = &mmap_ref[key_start..key_end];
 
-        if key_buf_slice == expected_key {
-            let value_buf = if val_len > 0 {
-                let val_start = key_end;
-                let val_end = val_start + val_len as usize;
-                if val_end > mmap_ref.len() {
-                    return Err(io::Error::new(
-                        ErrorKind::InvalidData,
-                        "Mmap bounds exceeded for value",
-                    ));
-                }
-                mmap_ref[val_start..val_end].to_vec()
-            } else {
-                Vec::new()
-            };
-            Ok(Some(value_buf))
-        } else {
-            Ok(None)
+        if key_buf_slice != expected_key {
+            return Ok(None);
         }
+
+        let value_buf = if val_len > 0 {
+            let val_start = key_end;
+            let val_end = val_start + val_len as usize;
+            if val_end > mmap_ref.len() {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "Mmap bounds exceeded for value",
+                ));
+            }
+            mmap_ref[val_start..val_end].to_vec()
+        } else {
+            Vec::new()
+        };
+
+        Ok(Some(value_buf))
     }
 
     /// Returns an iterator over all key-value pairs in the database.
@@ -497,21 +457,18 @@ mod tests {
 
     fn create_in_memory_cdb_with_hasher<H: Hasher + Default + Clone + 'static>(
         records: &[(&[u8], &[u8])],
-        hasher_instance: H,
     ) -> Cdb<Cursor<Vec<u8>>, H> {
-        let mut writer =
-            CdbWriter::new_with_custom_hasher(Cursor::new(Vec::new()), hasher_instance.clone())
-                .unwrap();
+        let mut writer = CdbWriter::<_, H>::new(Cursor::new(Vec::new())).unwrap();
         for (key, value) in records {
             writer.put(key, value).unwrap();
         }
         writer.finalize().unwrap();
         let cursor = writer.into_inner().unwrap();
-        Cdb::new_with_custom_hasher(cursor, hasher_instance).unwrap()
+        Cdb::<_, H>::new(cursor).unwrap()
     }
 
     fn create_in_memory_cdb(records: &[(&[u8], &[u8])]) -> Cdb<Cursor<Vec<u8>>, CdbHash> {
-        create_in_memory_cdb_with_hasher(records, CdbHash::default())
+        create_in_memory_cdb_with_hasher::<CdbHash>(records)
     }
 
     #[test]
@@ -621,7 +578,7 @@ mod tests {
             (b"key_B".as_ref(), b"value_B".as_ref()),
             (b"key_C".as_ref(), b"value_C".as_ref()),
         ];
-        let cdb = create_in_memory_cdb_with_hasher(&records, CollisionHasher::default());
+        let cdb = create_in_memory_cdb_with_hasher::<CollisionHasher>(&records);
 
         assert_eq!(cdb.get(b"key_A").unwrap().unwrap(), b"value_A");
         assert_eq!(cdb.get(b"key_B").unwrap().unwrap(), b"value_B");

@@ -30,6 +30,7 @@ impl<'cdb, R: ReaderAt, H: std::hash::Hasher + Default> CdbIterator<'cdb, R, H> 
         } else {
             HEADER_SIZE
         };
+
         CdbIterator {
             cdb,
             current_pos: HEADER_SIZE,
@@ -56,6 +57,7 @@ impl<'a, R: ReaderAt, H: std::hash::Hasher + Default> Iterator for CdbIterator<'
                 let val_len = val_len as u64;
                 let record_data_offset = self.current_pos + 8;
                 let total_record_len_with_header = 8 + key_len + val_len;
+
                 if self
                     .current_pos
                     .saturating_add(total_record_len_with_header)
@@ -66,6 +68,7 @@ impl<'a, R: ReaderAt, H: std::hash::Hasher + Default> Iterator for CdbIterator<'
                         "Record extends beyond expected data end",
                     )));
                 }
+
                 let mut key_buf = vec![0u8; key_len as usize];
                 if key_len > 0 {
                     if let Err(e) = self
@@ -76,6 +79,7 @@ impl<'a, R: ReaderAt, H: std::hash::Hasher + Default> Iterator for CdbIterator<'
                         return Some(Err(e));
                     }
                 }
+
                 let mut val_buf = vec![0u8; val_len as usize];
                 if val_len > 0 {
                     if let Err(e) = self
@@ -87,6 +91,7 @@ impl<'a, R: ReaderAt, H: std::hash::Hasher + Default> Iterator for CdbIterator<'
                     }
                 }
                 self.current_pos += total_record_len_with_header;
+
                 Some(Ok((key_buf, val_buf)))
             }
             Err(e) => Some(Err(e)),

@@ -44,7 +44,6 @@ impl Hasher for CdbHash {
         self.state
     }
 
-    ///
     /// The hash state is updated for each byte in the input slice according to the formula:
     /// `hash = ((hash << 5) + hash) ^ byte` (using wrapping arithmetic).
     fn write(&mut self, bytes: &[u8]) {
@@ -60,19 +59,7 @@ impl Hasher for CdbHash {
     fn write_u64(&mut self, i: u64) {
         self.write(&i.to_le_bytes());
     }
-
-    // Other write_* methods can use the default implementation or be overridden if necessary.
-    // For cdb hash, the write method is sufficient.
 }
-
-// The Rust Hasher trait does not directly provide Sum, Reset, Size, or BlockSize methods.
-// Sum64() is replaced by finish().
-// Reset() can be achieved by creating a new Hasher instance (e.g., CdbHash::new()).
-// Size() and BlockSize() represent fixed values (8 bytes) for the cdb hash algorithm
-// and can be defined as constants if needed.
-
-/// The size of the hash output in bytes (u64 is 8 bytes).
-pub const CDB_HASH_SIZE: usize = 8;
 
 #[cfg(test)]
 mod tests {

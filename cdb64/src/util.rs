@@ -1,7 +1,6 @@
 use std::io::{Error, ErrorKind, Result, Write};
 
 /// A trait for objects that can be read from at a specific offset.
-/// Similar to Go's `io.ReaderAt`.
 pub trait ReaderAt {
     /// Reads up to `buf.len()` bytes into `buf` starting at `offset`.
     /// Returns the number of bytes read.
@@ -73,7 +72,7 @@ impl ReaderAt for std::io::Cursor<Vec<u8>> {
 
 /// Reads two u32 values (a tuple) from a `ReaderAt` at the given offset.
 /// The values are expected to be encoded in little-endian format, 4 bytes each.
-pub fn read_tuple<R: ReaderAt + ?Sized>(reader: &R, offset: u64) -> Result<(u32, u32)> {
+pub(crate) fn read_tuple<R: ReaderAt + ?Sized>(reader: &R, offset: u64) -> Result<(u32, u32)> {
     let mut buffer = [0u8; 8]; // Buffer for two u32 values
     reader.read_exact_at(&mut buffer, offset)?;
 
@@ -99,7 +98,11 @@ pub fn read_tuple<R: ReaderAt + ?Sized>(reader: &R, offset: u64) -> Result<(u32,
 
 /// Writes two u32 values (a tuple) to a `Write` stream.
 /// The values are encoded in little-endian format, 4 bytes each.
-pub fn write_tuple<W: Write + ?Sized>(writer: &mut W, first: u32, second: u32) -> Result<()> {
+pub(crate) fn write_tuple<W: Write + ?Sized>(
+    writer: &mut W,
+    first: u32,
+    second: u32,
+) -> Result<()> {
     writer.write_all(&first.to_le_bytes())?;
     writer.write_all(&second.to_le_bytes())?;
     Ok(())

@@ -88,11 +88,11 @@
 //! }
 //! ```
 
-pub mod cdb;
-pub mod hash;
-pub mod iterator;
-pub mod util;
-pub mod writer;
+mod cdb;
+mod hash;
+mod iterator;
+mod util;
+mod writer;
 
 // re-exports
 pub use cdb::Cdb;
