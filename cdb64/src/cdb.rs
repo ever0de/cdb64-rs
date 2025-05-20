@@ -7,7 +7,6 @@ use std::path::Path;
 #[cfg(feature = "mmap")]
 use memmap2::Mmap;
 
-use crate::hash::CdbHash;
 use crate::util::{ReaderAt, read_tuple};
 
 /// The size of the CDB header in bytes.
@@ -58,7 +57,7 @@ pub(crate) struct TableEntry {
 ///     Ok(())
 /// }
 /// ```
-pub struct Cdb<R: ReaderAt, H: Hasher + Default = CdbHash> {
+pub struct Cdb<R, H> {
     pub(crate) reader: R,
     pub(crate) header: [TableEntry; 256],
     _hasher: PhantomData<H>,
