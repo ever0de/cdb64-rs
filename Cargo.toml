@@ -10,3 +10,6 @@ repository = "https://github.com/ever0de/cdb64-rs"
 
 [workspace.dependencies]
 cdb64 = { path = "cdb64", version = "0.1.0" }
+
+[profile.release]
+lto = true
