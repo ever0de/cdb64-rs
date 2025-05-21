@@ -1,8 +1,10 @@
-use std::fs::File;
-use std::hash::Hasher;
-use std::io::{self, ErrorKind};
-use std::marker::PhantomData;
-use std::path::Path;
+use std::{
+    fs::File,
+    hash::Hasher,
+    io::{self, ErrorKind},
+    marker::PhantomData,
+    path::Path,
+};
 
 #[cfg(feature = "mmap")]
 use memmap2::Mmap;
@@ -448,12 +450,10 @@ fn read_tuple_from_mmap(mmap: &Mmap, offset: u64) -> io::Result<(u64, u64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hash::CdbHash;
-    use crate::writer::CdbWriter;
-    use std::hash::Hasher as StdHasher;
-    use std::io::Cursor;
+    use crate::{hash::CdbHash, writer::CdbWriter};
     #[cfg(feature = "mmap")]
     use std::io::Write;
+    use std::{hash::Hasher as StdHasher, io::Cursor};
     use tempfile::NamedTempFile;
 
     fn create_in_memory_cdb_with_hasher<H: Hasher + Default + Clone + 'static>(

@@ -1,7 +1,9 @@
 use cdb64::{Cdb, CdbHash, CdbWriter, Error};
-use std::collections::HashMap;
-use std::fs::{File, OpenOptions};
-use std::hash::Hasher;
+use std::{
+    collections::HashMap,
+    fs::{File, OpenOptions},
+    hash::Hasher,
+};
 use tempfile::NamedTempFile;
 
 // A simple custom hasher for testing

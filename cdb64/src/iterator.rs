@@ -1,7 +1,9 @@
 use std::io::{self, ErrorKind};
 
-use crate::cdb::{Cdb, HEADER_SIZE, TableEntry};
-use crate::util::{ReaderAt, read_tuple};
+use crate::{
+    cdb::{Cdb, HEADER_SIZE, TableEntry},
+    util::{ReaderAt, read_tuple},
+};
 
 /// Represents a sequential iterator over a CDB database.
 ///

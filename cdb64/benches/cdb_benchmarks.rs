@@ -1,9 +1,7 @@
 use cdb64::{Cdb, CdbHash, CdbWriter};
 use criterion::{Criterion, criterion_group, criterion_main};
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
-use std::fs::File;
-use std::io::Cursor;
+use rand::{Rng, SeedableRng, rngs::StdRng};
+use std::{fs::File, io::Cursor};
 use tempfile::NamedTempFile;
 
 const NUM_ENTRIES_FOR_BENCH: usize = 10_000; // Number of entries for benchmark
