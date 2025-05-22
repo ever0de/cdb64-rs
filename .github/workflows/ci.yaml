@@ -107,7 +107,7 @@ jobs:
           uv sync --dev
       - name: Build Python package
         working-directory: ./python
-        run: .venv/bin/python -m maturin build --release
+        run: uv run -- maturin develop --uv
       - name: Run Python tests
         working-directory: ./python
-        run: .venv/bin/python -m pytest tests
+        run: uv run -- pytest tests
