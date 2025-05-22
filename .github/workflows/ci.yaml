@@ -104,11 +104,10 @@ jobs:
         working-directory: ./python
         run: |
           uv venv
-          source .venv/bin/activate
           uv sync --dev
       - name: Build Python package
         working-directory: ./python
-        run: python -m maturin build --release
+        run: .venv/bin/python -m maturin build --release
       - name: Run Python tests
         working-directory: ./python
-        run: python -m pytest tests
+        run: .venv/bin/python -m pytest tests
