@@ -44,7 +44,7 @@ def test_put_after_finalize():
     writer = CdbWriter(file_path)
     writer.put(b"key", b"value")
     writer.finalize()
-    with pytest.raises(IOError): # Or the specific error your Rust code maps to
+    with pytest.raises(IOError):
         writer.put(b"another_key", b"another_value")
     if os.path.exists(file_path):
         os.remove(file_path)
