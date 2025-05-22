@@ -87,3 +87,22 @@ jobs:
         run: cd node && pnpm build
       - name: Run Node.js tests
         run: cd node && pnpm test
+
+  python:
+    name: Build Python
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Install dependencies
+        run: cd python && uv sync --dev
+      - name: Build Python package
+        run: cd python && uv run -- maturin build --release
+      - name: Run Python tests
+        run: cd python && uv run -- pytest tests
