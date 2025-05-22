@@ -98,11 +98,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 When using `Cdb::open_mmap`, the file contents are mapped into memory. Subsequent `get` operations can then read directly from this memory region, potentially offering performance benefits over standard file I/O, especially if the operating system can keep frequently accessed parts of the mapped file in RAM.
 
-## Node.js Bindings
+## Language Bindings
 
-This library also provides bindings for Node.js, allowing you to use `cdb64` functionalities within your Node.js applications. The Node.js binding is built using `napi-rs` and can be found in the `node/` directory.
+This library provides bindings for multiple programming languages, allowing you to use `cdb64` functionalities within your applications.
+
+### Node.js
+
+The Node.js binding is built using `napi-rs` and can be found in the `node/` directory.
 
 For detailed instructions on building, installing, and using the Node.js bindings, please refer to the `README.md` file (if available) and the source code within the `node/` directory.
+
+### Python
+
+The Python binding is built using `PyO3` and can be found in the `python/` directory.
+
+For detailed instructions on building, installing, and using the Python bindings, please refer to the `README.md` file (if available) and the source code within the `python/` directory.
 
 ## How it Works
 
