@@ -1,0 +1,12 @@
+[package]
+name = "cdb64-python"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "cdb64_python"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.25.0", features = ["abi3"] }
+cdb64 = { workspace = true }
