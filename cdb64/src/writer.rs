@@ -47,7 +47,7 @@ impl<W: Write + Seek, H: Hasher + Default> CdbWriter<W, H> {
 
         Ok(CdbWriter {
             writer,
-            entries_by_table: std::array::from_fn(|_| Vec::new()),
+            entries_by_table: [const { Vec::new() }; 256],
             is_finalized: false,
             current_data_offset: HEADER_SIZE,
             _hasher: PhantomData,
