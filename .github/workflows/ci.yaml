@@ -82,11 +82,14 @@ jobs:
         with:
           version: 9
       - name: Install dependencies
-        run: cd node && pnpm install
+        working-directory: ./node
+        run: pnpm install
       - name: Build Node.js package
-        run: cd node && pnpm build
+        working-directory: ./node
+        run: pnpm build
       - name: Run Node.js tests
-        run: cd node && pnpm test
+        working-directory: ./node
+        run: pnpm test
 
   python:
     name: Build Python
