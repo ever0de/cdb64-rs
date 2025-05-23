@@ -108,11 +108,61 @@ The Node.js binding is built using `napi-rs` and can be found in the `node/` dir
 
 For detailed instructions on building, installing, and using the Node.js bindings, please refer to the `README.md` file (if available) and the source code within the `node/` directory.
 
+#### Quick Example (Node.js)
+
+```javascript
+const { CdbWriter, Cdb } = require('cdb64-node');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+const dbPath = path.join(os.tmpdir(), 'test-node.cdb');
+
+// Write
+const writer = new CdbWriter(dbPath);
+writer.put(Buffer.from('hello'), Buffer.from('node'));
+writer.finalize();
+
+// Read
+const cdb = Cdb.open(dbPath);
+const value = cdb.get(Buffer.from('hello'));
+console.log(Buffer.from(value).toString()); // Output: node
+
+// Iterate
+for (const entry of cdb.iter()) {
+  console.log(`Key: ${Buffer.from(entry.key).toString()}, Value: ${Buffer.from(entry.value).toString()}`);
+}
+```
+
 ### Python
 
 The Python binding is built using `PyO3` and can be found in the `python/` directory.
 
 For detailed instructions on building, installing, and using the Python bindings, please refer to the `README.md` file (if available) and the source code within the `python/` directory.
+
+#### Quick Example (Python)
+
+```python
+import os
+from cdb64_python import CdbWriter, Cdb
+
+db_path = "test_python.cdb"
+
+# Write
+writer = CdbWriter(db_path)
+writer.put(b"hello", b"python")
+writer.finalize()
+
+# Read
+cdb = Cdb.open(db_path)
+value = cdb.get(b"hello")
+print(value.decode()) # Output: python
+
+# Iterate
+for key, value in cdb.iter():
+  print(f"Key: {key.decode()}, Value: {value.decode()}")
+
+```
 
 ## How it Works
 
