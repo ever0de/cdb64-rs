@@ -72,7 +72,7 @@ impl<H: Hasher + Default> Cdb<File, H> {
     ///
     /// This method initializes a `Cdb` instance with a `std::fs::File` as the reader
     /// and uses the specified `Hasher` (defaults to `CdbHash`).
-    pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+    pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let file = File::open(path)?;
         Self::new(file)
     }
@@ -83,7 +83,7 @@ impl<H: Hasher + Default> Cdb<File, H> {
     /// and reads the CDB header using the mapped memory for efficient access. The returned `Cdb` instance keeps both
     /// the file and the mmap alive for the lifetime of the object. If the header cannot be read, an error is returned.
     #[cfg(feature = "mmap")]
-    pub fn open_mmap<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+    pub fn open_mmap(path: impl AsRef<Path>) -> io::Result<Self> {
         let file = File::open(path)?;
         let mmap = unsafe { Mmap::map(&file)? };
         let mut cdb = Cdb {
@@ -456,7 +456,7 @@ mod tests {
     use std::{hash::Hasher as StdHasher, io::Cursor};
     use tempfile::NamedTempFile;
 
-    fn create_in_memory_cdb_with_hasher<H: Hasher + Default + Clone + 'static>(
+    fn create_in_memory_cdb_with_hasher<H: Hasher + Default>(
         records: &[(&[u8], &[u8])],
     ) -> Cdb<Cursor<Vec<u8>>, H> {
         let mut writer = CdbWriter::<_, H>::new(Cursor::new(Vec::new())).unwrap();

@@ -28,7 +28,7 @@ pub struct CdbWriter<W: Write + Seek, H: Hasher + Default = CdbHash> {
 }
 
 impl<H: Hasher + Default> CdbWriter<File, H> {
-    pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub fn create(path: impl AsRef<Path>) -> Result<Self, Error> {
         let file = OpenOptions::new()
             .write(true)
             .create(true)
