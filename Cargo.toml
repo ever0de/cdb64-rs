@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["cdb64", "node", "python"]
+members = ["cdb64", "c", "node", "python"]
 default-members = ["cdb64"]
 
 [workspace.package]
