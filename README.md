@@ -111,10 +111,10 @@ For detailed instructions on building, installing, and using the Node.js binding
 #### Quick Example (Node.js)
 
 ```javascript
-const { CdbWriter, Cdb } = require('cdb64-node');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+import { CdbWriter, Cdb } from 'cdb64-node';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 const dbPath = path.join(os.tmpdir(), 'test-node.cdb');
 

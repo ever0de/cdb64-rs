@@ -1,12 +1,10 @@
 import test from 'ava'
 
-import native from '../index.js'
+import { CdbWriter, Cdb } from '../index.js'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
 import { unlinkSync } from 'fs'
-
-const { CdbWriter, Cdb } = native
 
 test('CdbWriter/Cdb native roundtrip', (t) => {
   const dbPath = join(tmpdir(), 'test-cdb-' + randomBytes(8).toString('hex') + '.cdb')
