@@ -57,8 +57,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Mmap (Memory Mapping) Support
 
-`cdb64-rs` supports memory-mapped file access for potentially faster read performance, especially when accessing data repeatedly. Memory mapping maps a file's contents directly into the application's address space, which can reduce the overhead of system calls for I/O operations.
-
 To use the mmap feature, you need to enable it in your `Cargo.toml`:
 
 ```toml
@@ -95,8 +93,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
-
-When using `Cdb::open_mmap`, the file contents are mapped into memory. Subsequent `get` operations can then read directly from this memory region, potentially offering performance benefits over standard file I/O, especially if the operating system can keep frequently accessed parts of the mapped file in RAM.
 
 ## Language Bindings
 
