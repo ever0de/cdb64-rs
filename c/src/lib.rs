@@ -22,12 +22,12 @@ pub struct CdbWriterFile {
 ///
 /// The `path` pointer must point to a valid null-terminated C string.
 /// The memory pointed to by `path` must be valid for reads.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cdb_writer_create(path: *const c_char) -> *mut CdbWriterFile {
     if path.is_null() {
         return ptr::null_mut();
     }
-    let c_str = CStr::from_ptr(path);
+    let c_str = unsafe { CStr::from_ptr(path) };
     let path_str = match c_str.to_str() {
         Ok(s) => s,
         Err(_) => return ptr::null_mut(), // UTF-8 error
@@ -47,7 +47,7 @@ pub unsafe extern "C" fn cdb_writer_create(path: *const c_char) -> *mut CdbWrite
 /// `key_ptr` must point to a valid memory block of `key_len` bytes.
 /// `value_ptr` must point to a valid memory block of `value_len` bytes.
 /// The `CdbWriterFile` must not have been finalized yet.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cdb_writer_put(
     writer_ptr: *mut CdbWriterFile,
     key_ptr: *const c_uchar,
@@ -58,14 +58,14 @@ pub unsafe extern "C" fn cdb_writer_put(
     if writer_ptr.is_null() || key_ptr.is_null() || value_ptr.is_null() {
         return CDB_ERROR_NULL_POINTER;
     }
-    let writer_wrapper = &mut *writer_ptr;
+    let writer_wrapper = unsafe { &mut *writer_ptr };
     let writer = match writer_wrapper.writer.as_mut() {
         Some(w) => w,
         None => return CDB_ERROR_OPERATION_FAILED,
     };
 
-    let key = slice::from_raw_parts(key_ptr, key_len);
-    let value = slice::from_raw_parts(value_ptr, value_len);
+    let key = unsafe { slice::from_raw_parts(key_ptr, key_len) };
+    let value = unsafe { slice::from_raw_parts(value_ptr, value_len) };
 
     match writer.put(key, value) {
         Ok(_) => CDB_SUCCESS,
@@ -81,12 +81,12 @@ pub unsafe extern "C" fn cdb_writer_put(
 /// `writer_ptr` must be a valid pointer to a `CdbWriterFile` obtained from `cdb_writer_create`.
 /// After this call, the writer is finalized, and `writer_ptr` should not be used for further `put` operations.
 /// It should eventually be freed with `cdb_writer_free`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cdb_writer_finalize(writer_ptr: *mut CdbWriterFile) -> c_int {
     if writer_ptr.is_null() {
         return CDB_ERROR_NULL_POINTER;
     }
-    let writer_wrapper = &mut *writer_ptr;
+    let writer_wrapper = unsafe { &mut *writer_ptr };
     match writer_wrapper.writer.take() {
         // Use take to get ownership and leave None
         Some(mut writer) => {
@@ -109,10 +109,10 @@ pub unsafe extern "C" fn cdb_writer_finalize(writer_ptr: *mut CdbWriterFile) -> 
 ///
 /// `writer_ptr` must be a valid pointer to a `CdbWriterFile` obtained from `cdb_writer_create`
 /// or `ptr::null_mut()`. If it's a valid pointer, it must not be used after this function is called.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cdb_writer_free(writer_ptr: *mut CdbWriterFile) {
     if !writer_ptr.is_null() {
-        drop(Box::from_raw(writer_ptr));
+        unsafe { drop(Box::from_raw(writer_ptr)) };
     }
 }
 
@@ -126,12 +126,12 @@ pub struct CdbFile {
 /// The `path` pointer must point to a valid null-terminated C string.
 /// The memory pointed to by `path` must be valid for reads.
 /// The file specified by `path` must be a valid CDB file.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cdb_open(path: *const c_char) -> *mut CdbFile {
     if path.is_null() {
         return ptr::null_mut();
     }
-    let c_str = CStr::from_ptr(path);
+    let c_str = unsafe { CStr::from_ptr(path) };
     let path_str = match c_str.to_str() {
         Ok(s) => s,
         Err(_) => return ptr::null_mut(),
@@ -161,7 +161,7 @@ pub struct CdbData {
 /// `value_out` must point to a valid `CdbData` struct where the result will be stored.
 /// If the function returns `CDB_SUCCESS` and `(*value_out).ptr` is not null,
 /// the memory pointed to by `(*value_out).ptr` must be freed by calling `cdb_free_data`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cdb_get(
     reader_ptr: *mut CdbFile,
     key_ptr: *const c_uchar,
@@ -171,30 +171,36 @@ pub unsafe extern "C" fn cdb_get(
     if reader_ptr.is_null() || key_ptr.is_null() || value_out.is_null() {
         return CDB_ERROR_NULL_POINTER;
     }
-    let reader_wrapper = &mut *reader_ptr;
+    let reader_wrapper = unsafe { &mut *reader_ptr };
     let reader = match reader_wrapper.reader.as_mut() {
         Some(r) => r,
         None => return CDB_ERROR_OPERATION_FAILED,
     };
-    let key = slice::from_raw_parts(key_ptr, key_len);
+    let key = unsafe { slice::from_raw_parts(key_ptr, key_len) };
 
     match reader.get(key) {
         Ok(Some(value_vec)) => {
             let len = value_vec.len();
             let boxed_slice = value_vec.into_boxed_slice();
-            (*value_out).ptr = Box::into_raw(boxed_slice) as *const c_uchar;
-            (*value_out).len = len;
+            unsafe {
+                (*value_out).ptr = Box::into_raw(boxed_slice) as *const c_uchar;
+                (*value_out).len = len;
+            }
             CDB_SUCCESS
         }
         Ok(None) => {
-            (*value_out).ptr = ptr::null();
-            (*value_out).len = 0;
+            unsafe {
+                (*value_out).ptr = ptr::null();
+                (*value_out).len = 0;
+            }
             CDB_SUCCESS
         }
         Err(e) => {
             eprintln!("Error in cdb_get: {}", e);
-            (*value_out).ptr = ptr::null();
-            (*value_out).len = 0;
+            unsafe {
+                (*value_out).ptr = ptr::null();
+                (*value_out).len = 0;
+            }
             CDB_ERROR_IO
         }
     }
@@ -205,13 +211,15 @@ pub unsafe extern "C" fn cdb_get(
 /// `data.ptr` must be a pointer previously obtained from `cdb_get` that has not yet been freed.
 /// `data.len` must be the length associated with that pointer.
 /// If `data.ptr` is null, this function does nothing.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cdb_free_data(data: CdbData) {
     if !data.ptr.is_null() {
-        drop(Box::from_raw(slice::from_raw_parts_mut(
-            data.ptr as *mut u8,
-            data.len,
-        )));
+        unsafe {
+            drop(Box::from_raw(slice::from_raw_parts_mut(
+                data.ptr as *mut u8,
+                data.len,
+            )))
+        };
     }
 }
 
@@ -219,10 +227,10 @@ pub unsafe extern "C" fn cdb_free_data(data: CdbData) {
 ///
 /// `reader_ptr` must be a valid pointer to a `CdbFile` obtained from `cdb_open`
 /// or `ptr::null_mut()`. If it's a valid pointer, it must not be used after this function is called.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cdb_close(reader_ptr: *mut CdbFile) {
     if !reader_ptr.is_null() {
-        drop(Box::from_raw(reader_ptr));
+        unsafe { drop(Box::from_raw(reader_ptr)) };
     }
 }
 
@@ -295,14 +303,14 @@ impl OwnedCdbIterator {
 /// # Returns
 ///
 /// Returns a pointer to `OwnedCdbIterator` on success, null on failure.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cdb_iterator_new(reader_ptr: *mut CdbFile) -> *mut OwnedCdbIterator {
     if reader_ptr.is_null() {
         return ptr::null_mut();
     }
 
     // Take ownership of the CdbFile
-    let cdb_file = Box::from_raw(reader_ptr);
+    let cdb_file = unsafe { Box::from_raw(reader_ptr) };
 
     // Extract the Cdb from CdbFile
     let cdb = match cdb_file.reader {
@@ -328,7 +336,7 @@ pub unsafe extern "C" fn cdb_iterator_new(reader_ptr: *mut CdbFile) -> *mut Owne
 /// - `CDB_ITERATOR_FINISHED` (0) if iteration is complete
 /// - `CDB_ERROR_NULL_POINTER` (-1) if pointers are null
 /// - `CDB_ERROR_IO` (-3) on I/O error
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cdb_iterator_next(
     iter_ptr: *mut OwnedCdbIterator,
     kv_out: *mut CdbKeyValue,
@@ -337,31 +345,36 @@ pub unsafe extern "C" fn cdb_iterator_next(
         return CDB_ERROR_NULL_POINTER;
     }
 
-    let iterator = &mut *iter_ptr;
+    let iterator = unsafe { &mut *iter_ptr };
 
     match iterator.next() {
         Some(Ok((key, value))) => {
             // Allocate memory for key
             let key_len = key.len();
             let key_boxed = key.into_boxed_slice();
-            (*kv_out).key.ptr = Box::into_raw(key_boxed) as *const c_uchar;
-            (*kv_out).key.len = key_len;
 
             // Allocate memory for value
             let value_len = value.len();
             let value_boxed = value.into_boxed_slice();
-            (*kv_out).value.ptr = Box::into_raw(value_boxed) as *const c_uchar;
-            (*kv_out).value.len = value_len;
+
+            unsafe {
+                (*kv_out).key.ptr = Box::into_raw(key_boxed) as *const c_uchar;
+                (*kv_out).key.len = key_len;
+                (*kv_out).value.ptr = Box::into_raw(value_boxed) as *const c_uchar;
+                (*kv_out).value.len = value_len;
+            }
 
             CDB_ITERATOR_HAS_NEXT
         }
         Some(Err(_)) => CDB_ERROR_IO,
         None => {
             // No more entries
-            (*kv_out).key.ptr = ptr::null();
-            (*kv_out).key.len = 0;
-            (*kv_out).value.ptr = ptr::null();
-            (*kv_out).value.len = 0;
+            unsafe {
+                (*kv_out).key.ptr = ptr::null();
+                (*kv_out).key.len = 0;
+                (*kv_out).value.ptr = ptr::null();
+                (*kv_out).value.len = 0;
+            }
             CDB_ITERATOR_FINISHED
         }
     }
@@ -373,9 +386,9 @@ pub unsafe extern "C" fn cdb_iterator_next(
 ///
 /// `iter_ptr` must be a valid pointer to an `OwnedCdbIterator` obtained from `cdb_iterator_new`
 /// or `ptr::null_mut()`. If it's a valid pointer, it must not be used after this function is called.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn cdb_iterator_free(iter_ptr: *mut OwnedCdbIterator) {
     if !iter_ptr.is_null() {
-        drop(Box::from_raw(iter_ptr));
+        unsafe { drop(Box::from_raw(iter_ptr)) };
     }
 }
