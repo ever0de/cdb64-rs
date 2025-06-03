@@ -160,6 +160,57 @@ for key, value in cdb.iter():
 
 ```
 
+### C
+
+The C binding provides a native C API and can be found in the `c/` directory. The binding generates a dynamic library (`libcdb64_c.dylib` on macOS, `libcdb64_c.so` on Linux, `cdb64_c.dll` on Windows) and corresponding header files.
+
+#### Building the C Library
+
+```sh
+cd c/
+make
+```
+
+This will generate:
+
+* Dynamic library: `target/{debug,release}/libcdb64_c.{dylib|so|dll}`
+* Header file: `include/cdb64.h`
+
+#### Quick Example (C)
+
+```c
+#include "cdb64.h"
+#include <stdio.h>
+
+int main() {
+    // Write
+    CdbWriterFile* writer = cdb_writer_create("test.cdb");
+    cdb_writer_put(writer, (unsigned char*)"hello", 5, (unsigned char*)"world", 5);
+    cdb_writer_finalize(writer);
+    cdb_writer_free(writer);
+    
+    // Read
+    CdbFile* cdb = cdb_open("test.cdb");
+    CdbData result;
+    if (cdb_get(cdb, (unsigned char*)"hello", 5, &result) == CDB_SUCCESS && result.ptr) {
+        printf("Value: %.*s\n", (int)result.len, result.ptr);
+        cdb_free_data(result);
+    }
+    
+    // Iterate
+    OwnedCdbIterator* iter = cdb_iterator_new(cdb); // Note: cdb is consumed
+    CdbKeyValue kv;
+    while (cdb_iterator_next(iter, &kv) == CDB_ITERATOR_HAS_NEXT) {
+        printf("Key: %.*s, Value: %.*s\n", 
+               (int)kv.key.len, kv.key.ptr, (int)kv.value.len, kv.value.ptr);
+        cdb_free_data(kv.key);
+        cdb_free_data(kv.value);
+    }
+    cdb_iterator_free(iter);
+    return 0;
+}
+```
+
 ## How it Works
 
 A cdb file consists of three parts:
