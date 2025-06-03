@@ -1,0 +1,18 @@
+# Rust build artifacts
+/target/
+
+# Generated C header
+/include/
+*.h
+
+# Compiled C example
+c_example
+integration_test
+
+# Test database file
+test_c_db.cdb
+
+# Dynamic libraries
+*.dylib
+*.so
+*.dll

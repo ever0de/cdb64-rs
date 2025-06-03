@@ -1,0 +1,14 @@
+[package]
+name = "cdb64_c"
+version = { workspace = true }
+edition = { workspace = true }
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+cdb64 = { workspace = true }
+libc = "0.2"
+
+[build-dependencies]
+cbindgen = "0.29"
