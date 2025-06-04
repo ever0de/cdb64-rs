@@ -245,7 +245,7 @@ Key points:
 ## 5. Hasher
 
 *   The library is generic over `std::hash::Hasher + Default`.
-*   The same hasher (and its specific algorithm, e.g., SipHash 1-3 via `DefaultHasher`) must be used for both writing and reading a CDB file for lookups to be successful.
+*   The same hasher must be used for both writing and reading a CDB file for lookups to be successful.
 *   The full 64-bit hash output is used:
     *   Lower bits (e.g., `hash % 256`) select the hash table.
     *   Remaining higher bits (e.g., `hash / 256`) are stored in the hash table slots to disambiguate entries within that table.

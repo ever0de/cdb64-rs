@@ -235,7 +235,7 @@ For more detailed information, please refer to Daniel J. Bernstein's [cdb specif
 
 ## Benchmarks
 
-Benchmarks are run using Criterion.rs. The following results were obtained on a machine with `Apple M2 Pro` and `32GB RAM` running `Sequoia 15.4.1(24E263)`. All benchmarks use `CdbHash` (based on SipHash 1-3) and operate on a dataset of 10,000 key-value pairs, where keys are strings like "key0", "key1", ..., and values are random byte arrays of 10-200 bytes.
+Benchmarks are run using Criterion.rs. The following results were obtained on a machine with `Apple M2 Pro` and `32GB RAM` running `Sequoia 15.4.1(24E263)`. All benchmarks use `CdbHash` and operate on a dataset of 10,000 key-value pairs, where keys are strings like "key0", "key1", ..., and values are random byte arrays of 10-200 bytes.
 
 * **Write Performance (to temporary file)**: `CdbWriter/write_temp_file`
   * Time: ~105.70 ms
