@@ -82,25 +82,23 @@ impl<'a, R: ReaderAt, H: std::hash::Hasher + Default> Iterator for CdbIterator<'
                 }
 
                 let mut key_buf = vec![0u8; key_len as usize];
-                if key_len > 0 {
-                    if let Err(e) = self
+                if key_len > 0
+                    && let Err(e) = self
                         .cdb
                         .reader
                         .read_exact_at(&mut key_buf, record_data_offset)
-                    {
-                        return Some(Err(e));
-                    }
+                {
+                    return Some(Err(e));
                 }
 
                 let mut val_buf = vec![0u8; val_len as usize];
-                if val_len > 0 {
-                    if let Err(e) = self
+                if val_len > 0
+                    && let Err(e) = self
                         .cdb
                         .reader
                         .read_exact_at(&mut val_buf, record_data_offset + key_len)
-                    {
-                        return Some(Err(e));
-                    }
+                {
+                    return Some(Err(e));
                 }
                 self.current_pos += total_record_len_with_header;
 

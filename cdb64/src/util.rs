@@ -289,10 +289,10 @@ mod tests {
             let current_read_count = self.read_count.get();
             self.read_count.set(current_read_count + 1);
 
-            if let Some(fail_at) = self.fail_on_nth_read {
-                if self.read_count.get() == fail_at {
-                    return Err(std::io::Error::other("Simulated read error"));
-                }
+            if let Some(fail_at) = self.fail_on_nth_read
+                && self.read_count.get() == fail_at
+            {
+                return Err(std::io::Error::other("Simulated read error"));
             }
 
             let offset_usize = offset as usize;
