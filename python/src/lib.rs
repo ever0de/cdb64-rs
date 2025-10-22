@@ -1,7 +1,9 @@
 use cdb64::{CdbHash, Error as CdbError};
-use pyo3::exceptions::PyIOError;
-use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyList};
+use pyo3::{
+    exceptions::PyIOError,
+    prelude::*,
+    types::{PyBytes, PyList},
+};
 use std::fs::File;
 
 #[pyclass(name = "CdbWriter")]

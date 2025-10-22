@@ -1,10 +1,6 @@
 use cdb64::{Cdb, CdbHash, CdbWriter};
 use libc::{c_char, c_int, c_uchar, size_t};
-use std::ffi::CStr;
-use std::fs::File;
-use std::path::Path;
-use std::ptr;
-use std::slice;
+use std::{ffi::CStr, fs::File, path::Path, ptr, slice};
 
 // --- Error Handling ---
 // 0 for success, -1 for generic error, specific positive values for specific errors.
