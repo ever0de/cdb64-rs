@@ -4,10 +4,12 @@
 
 ## Key Features
 
-* **Fast Lookups**: Retrieving values for keys is very fast.
-* **Atomic Updates**: Updates are performed atomically by replacing the database file.
-* **Efficient Space Usage**: The database structure is compact.
-* **Generic Hasher**: Supports any hash algorithm that implements the `std::hash::Hasher` trait. Defaults to CdbHash (Daniel J. Bernstein).
+* **Fast Lookups**: O(1) average-case lookups with excellent cache locality
+* **Atomic Updates**: Updates are performed atomically by replacing the database file
+* **Efficient Space Usage**: Compact binary format with minimal overhead
+* **64-bit Support**: Handle databases larger than 4GB with 64-bit offsets
+* **Generic Hasher**: Supports any hash algorithm that implements the `std::hash::Hasher` trait. Defaults to CdbHash (Daniel J. Bernstein)
+* **Multi-language Support**: Bindings for Node.js, Python, and C
 
 ## Usage
 
@@ -185,12 +187,33 @@ This will generate:
 int main() {
     // Write
     CdbWriterFile* writer = cdb_writer_create("test.cdb");
-    cdb_writer_put(writer, (unsigned char*)"hello", 5, (unsigned char*)"world", 5);
-    cdb_writer_finalize(writer);
+    if (writer == NULL) {
+        fprintf(stderr, "Failed to create writer\n");
+        return 1;
+    }
+    
+    int ret = cdb_writer_put(writer, (unsigned char*)"hello", 5, (unsigned char*)"world", 5);
+    if (ret != CDB_SUCCESS) {
+        fprintf(stderr, "Failed to put data\n");
+        cdb_writer_free(writer);
+        return 1;
+    }
+    
+    ret = cdb_writer_finalize(writer);
+    if (ret != CDB_SUCCESS) {
+        fprintf(stderr, "Failed to finalize writer\n");
+        cdb_writer_free(writer);
+        return 1;
+    }
     cdb_writer_free(writer);
     
     // Read
     CdbFile* cdb = cdb_open("test.cdb");
+    if (cdb == NULL) {
+        fprintf(stderr, "Failed to open database\n");
+        return 1;
+    }
+    
     CdbData result;
     if (cdb_get(cdb, (unsigned char*)"hello", 5, &result) == CDB_SUCCESS && result.ptr) {
         printf("Value: %.*s\n", (int)result.len, result.ptr);
