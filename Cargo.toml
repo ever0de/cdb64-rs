@@ -4,12 +4,12 @@ members = ["cdb64", "c", "node", "python"]
 default-members = ["cdb64"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 repository = "https://github.com/ever0de/cdb64-rs"
 
 [workspace.dependencies]
-cdb64 = { path = "cdb64", version = "0.1.0" }
+cdb64 = { path = "cdb64", version = "0.2.0" }
 
 [profile.release]
 lto = true

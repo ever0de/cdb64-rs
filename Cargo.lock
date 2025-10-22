@@ -112,7 +112,7 @@ dependencies = [
 
 [[package]]
 name = "cdb64"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "memmap2",
@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "cdb64-node"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cdb64",
  "napi",
@@ -133,7 +133,7 @@ dependencies = [
 
 [[package]]
 name = "cdb64-python"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cdb64",
  "pyo3",
@@ -141,7 +141,7 @@ dependencies = [
 
 [[package]]
 name = "cdb64_c"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cbindgen",
  "cdb64",
