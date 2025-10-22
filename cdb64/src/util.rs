@@ -40,6 +40,15 @@ impl ReaderAt for std::fs::File {
     }
 }
 
+/// Implement `ReaderAt` for `std::fs::File` on Windows systems.
+#[cfg(windows)]
+impl ReaderAt for std::fs::File {
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> Result<usize> {
+        use std::os::windows::fs::FileExt;
+        FileExt::seek_read(self, buf, offset)
+    }
+}
+
 /// Implement `ReaderAt` for byte slices, useful for testing or in-memory data.
 impl ReaderAt for &'_ [u8] {
     fn read_at(&self, buf: &mut [u8], offset: u64) -> Result<usize> {
