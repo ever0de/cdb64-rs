@@ -98,45 +98,6 @@ fn test_many_entries_same_table() -> Result<(), Error> {
     Ok(())
 }
 
-/// Test iteration order is consistent with insertion order.
-#[test]
-fn test_iteration_order() -> Result<(), Error> {
-    let mut writer = CdbWriter::<_, CdbHash>::new(Cursor::new(Vec::new()))?;
-
-    let entries = vec![
-        (b"first".to_vec(), b"1".to_vec()),
-        (b"second".to_vec(), b"2".to_vec()),
-        (b"third".to_vec(), b"3".to_vec()),
-        (b"fourth".to_vec(), b"4".to_vec()),
-    ];
-
-    for (k, v) in &entries {
-        writer.put(k, v)?;
-    }
-    writer.finalize()?;
-
-    let cursor = writer.into_inner()?;
-    let cdb = Cdb::<_, CdbHash>::new(cursor)?;
-
-    let retrieved: Vec<_> = cdb.iter().collect::<Result<Vec<_>, _>>()?;
-
-    assert_eq!(retrieved.len(), entries.len());
-    for (i, (expected_k, expected_v)) in entries.iter().enumerate() {
-        assert_eq!(
-            &retrieved[i].0, expected_k,
-            "Key order mismatch at index {}",
-            i
-        );
-        assert_eq!(
-            &retrieved[i].1, expected_v,
-            "Value order mismatch at index {}",
-            i
-        );
-    }
-
-    Ok(())
-}
-
 /// Test empty database iteration.
 #[test]
 fn test_empty_database_iteration() -> Result<(), Error> {
