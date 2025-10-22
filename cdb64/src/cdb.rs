@@ -81,7 +81,28 @@ impl<H: Hasher + Default> Cdb<File, H> {
     ///
     /// This method is only available when the `mmap` feature is enabled. It opens the file, creates a memory map,
     /// and reads the CDB header using the mapped memory for efficient access. The returned `Cdb` instance keeps both
-    /// the file and the mmap alive for the lifetime of the object. If the header cannot be read, an error is returned.
+    /// the file and the mmap alive for the lifetime of the object.
+    ///
+    /// # Performance Trade-offs
+    ///
+    /// **Advantages of mmap:**
+    /// - Potentially faster random access for frequently accessed data (OS page cache)
+    /// - Lower overhead for small reads
+    /// - Shared memory mapping across processes
+    ///
+    /// **Disadvantages of mmap:**
+    /// - Higher memory pressure (entire file is virtually mapped)
+    /// - Potential page faults on first access
+    /// - Platform-specific behavior and limitations
+    ///
+    /// # When to Use
+    ///
+    /// - Use `open_mmap()` for **small to medium** databases (<1GB) with **random access** patterns
+    /// - Use regular `open()` for **large** databases or **sequential** access patterns
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be opened, mapped, or if the header cannot be read.
     #[cfg(feature = "mmap")]
     pub fn open_mmap(path: impl AsRef<Path>) -> io::Result<Self> {
         let file = File::open(path)?;
@@ -199,6 +220,18 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
     /// * `Ok(Some(Vec<u8>))` if the key is found, containing the associated value.
     /// * `Ok(None)` if the key is not found in the database.
     /// * `Err(io::Error)` if an I/O error occurs during the lookup process.
+    ///
+    /// # Performance
+    ///
+    /// This operation has **O(1) average-case** time complexity (amortized constant time).
+    /// In the worst case with many hash collisions, it may degrade to O(n) where n is the
+    /// number of entries in a hash table bucket, but this is rare with good hash distribution.
+    ///
+    /// # Duplicate Keys
+    ///
+    /// If the database contains duplicate keys (inserted multiple times via `CdbWriter::put`),
+    /// this method returns the **first matching value** encountered during the hash table probe.
+    /// To retrieve all values for a key, use the iterator returned by `iter()`.
     ///
     /// # Process
     ///

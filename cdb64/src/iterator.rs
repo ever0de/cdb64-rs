@@ -8,6 +8,18 @@ use crate::{
 /// Represents a sequential iterator over a CDB database.
 ///
 /// This iterator borrows the Cdb instance immutably for its lifetime.
+///
+/// # Ordering
+///
+/// The iterator returns key-value pairs in the order they were written to the database
+/// (i.e., the order in which they appear in the data section of the CDB file).
+/// This order is deterministic and consistent across multiple iterations of the same file.
+///
+/// # Duplicate Keys
+///
+/// If the database contains duplicate keys, all entries will be returned by the iterator.
+/// Unlike `Cdb::get()`, which only returns the first match, the iterator provides access
+/// to all key-value pairs including duplicates.
 pub struct CdbIterator<'cdb, R: ReaderAt, H: std::hash::Hasher + Default = crate::hash::CdbHash> {
     cdb: &'cdb Cdb<R, H>,
     current_pos: u64,

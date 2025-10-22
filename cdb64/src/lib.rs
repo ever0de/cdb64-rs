@@ -101,17 +101,61 @@ pub use iterator::CdbIterator;
 pub use util::ReaderAt;
 pub use writer::CdbWriter;
 
+/// Errors that can occur when working with CDB databases.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// An I/O error occurred.
+    /// An I/O error occurred during file operations.
+    ///
+    /// This can happen during:
+    /// - File opening, reading, or writing
+    /// - Memory mapping (when mmap feature is enabled)
+    /// - Data serialization or deserialization
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
     /// Indicates an attempt to operate on a writer that has already been finalized.
+    ///
+    /// Once `CdbWriter::finalize()` is called, no further `put()` operations are allowed.
+    /// This error is returned if you try to call `put()` after finalization.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cdb64::{CdbWriter, CdbHash, Error};
+    /// use std::io::Cursor;
+    ///
+    /// let mut writer = CdbWriter::<_, CdbHash>::new(Cursor::new(Vec::new())).unwrap();
+    /// writer.finalize().unwrap();
+    ///
+    /// // This will fail with WriterFinalized error
+    /// match writer.put(b"key", b"value") {
+    ///     Err(Error::WriterFinalized) => println!("Expected error!"),
+    ///     _ => panic!("Should have failed"),
+    /// }
+    /// ```
     #[error("Attempted to operate on a finalized writer")]
     WriterFinalized,
 
     /// Indicates an attempt to use a writer that has not been finalized yet when finalization is required.
+    ///
+    /// This error is returned by `CdbWriter::into_inner()` if `finalize()` has not been called.
+    /// You must call `finalize()` to complete the database structure before consuming the writer.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cdb64::{CdbWriter, CdbHash, Error};
+    /// use std::io::Cursor;
+    ///
+    /// let mut writer = CdbWriter::<_, CdbHash>::new(Cursor::new(Vec::new())).unwrap();
+    /// writer.put(b"key", b"value").unwrap();
+    ///
+    /// // This will fail with WriterNotFinalized error
+    /// match writer.into_inner() {
+    ///     Err(Error::WriterNotFinalized) => println!("Expected error!"),
+    ///     _ => panic!("Should have failed"),
+    /// }
+    /// ```
     #[error("Writer has not been finalized yet")]
     WriterNotFinalized,
 }
