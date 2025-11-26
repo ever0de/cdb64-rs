@@ -11,15 +11,35 @@ use crate::{
 ///
 /// # Ordering
 ///
-/// The iterator returns key-value pairs in the order they were written to the database
-/// (i.e., the order in which they appear in the data section of the CDB file).
-/// This order is deterministic and consistent across multiple iterations of the same file.
+/// The iterator reads records sequentially from the data section of the CDB file,
+/// starting from the beginning of the data section to the end. The order depends on
+/// how the CDB file was created and is **not** sorted by key or hash value.
 ///
 /// # Duplicate Keys
 ///
 /// If the database contains duplicate keys, all entries will be returned by the iterator.
 /// Unlike `Cdb::get()`, which only returns the first match, the iterator provides access
 /// to all key-value pairs including duplicates.
+///
+/// # Example
+///
+/// ```rust
+/// use cdb64::{Cdb, CdbWriter, CdbHash};
+/// use std::io::Cursor;
+///
+/// let mut writer = CdbWriter::<_, CdbHash>::new(Cursor::new(Vec::new())).unwrap();
+/// writer.put(b"key1", b"value1").unwrap();
+/// writer.put(b"key2", b"value2").unwrap();
+/// writer.finalize().unwrap();
+///
+/// let cursor = writer.into_inner().unwrap();
+/// let cdb = Cdb::<_, CdbHash>::new(cursor).unwrap();
+///
+/// for result in cdb.iter() {
+///     let (key, value) = result.unwrap();
+///     println!("Key: {:?}, Value: {:?}", key, value);
+/// }
+/// ```
 pub struct CdbIterator<'cdb, R: ReaderAt, H: std::hash::Hasher + Default = crate::hash::CdbHash> {
     cdb: &'cdb Cdb<R, H>,
     current_pos: u64,
