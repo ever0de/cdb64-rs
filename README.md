@@ -254,7 +254,7 @@ This structure is designed to allow lookups with an average of just two disk acc
 
 ## Original CDB Specification
 
-For more detailed information, please refer to Daniel J. Bernstein's [cdb specification](https://cr.yp.to/cdb.html).
+For more detailed information, please refer to Daniel J. Bernstein's [cdb specification](https://cdb.cr.yp.to/).
 
 ## Benchmarks
 
