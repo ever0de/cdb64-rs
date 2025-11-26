@@ -226,3 +226,90 @@ fn test_all_hash_tables_coverage() -> Result<(), Error> {
 
     Ok(())
 }
+
+/// Test binary data with null bytes in keys and values.
+/// CDB should handle arbitrary binary data correctly.
+#[test]
+fn test_binary_data_with_null_bytes() -> Result<(), Error> {
+    let mut writer = CdbWriter::<_, CdbHash>::new(Cursor::new(Vec::new()))?;
+
+    // Keys and values containing null bytes
+    let key1 = b"key\x00with\x00nulls";
+    let value1 = b"value\x00also\x00has\x00nulls";
+    let key2 = b"\x00\x00\x00"; // Key of just null bytes
+    let value2 = b"\x00";
+
+    writer.put(key1, value1)?;
+    writer.put(key2, value2)?;
+    writer.finalize()?;
+
+    let cursor = writer.into_inner()?;
+    let cdb = Cdb::<_, CdbHash>::new(cursor)?;
+
+    assert_eq!(cdb.get(key1)?.unwrap(), value1);
+    assert_eq!(cdb.get(key2)?.unwrap(), value2);
+
+    Ok(())
+}
+
+/// Test high-value bytes (0xFF) in keys and values.
+#[test]
+fn test_high_value_bytes() -> Result<(), Error> {
+    let mut writer = CdbWriter::<_, CdbHash>::new(Cursor::new(Vec::new()))?;
+
+    let key = vec![0xFF; 100];
+    let value = vec![0xFF; 200];
+
+    writer.put(&key, &value)?;
+    writer.finalize()?;
+
+    let cursor = writer.into_inner()?;
+    let cdb = Cdb::<_, CdbHash>::new(cursor)?;
+
+    assert_eq!(cdb.get(&key)?.unwrap(), value);
+
+    Ok(())
+}
+
+/// Test that finalize can be called multiple times safely.
+#[test]
+fn test_multiple_finalize_calls() -> Result<(), Error> {
+    let mut writer = CdbWriter::<_, CdbHash>::new(Cursor::new(Vec::new()))?;
+    writer.put(b"key", b"value")?;
+
+    // First finalize should succeed
+    writer.finalize()?;
+
+    // Second finalize should also succeed (idempotent)
+    writer.finalize()?;
+
+    let cursor = writer.into_inner()?;
+    let cdb = Cdb::<_, CdbHash>::new(cursor)?;
+
+    assert_eq!(cdb.get(b"key")?.unwrap(), b"value");
+
+    Ok(())
+}
+
+/// Test unicode keys and values.
+#[test]
+fn test_unicode_keys_values() -> Result<(), Error> {
+    let mut writer = CdbWriter::<_, CdbHash>::new(Cursor::new(Vec::new()))?;
+
+    let key1 = "안녕하세요".as_bytes();
+    let value1 = "こんにちは".as_bytes();
+    let key2 = "🎉🎊🎈".as_bytes();
+    let value2 = "émojis et accénts".as_bytes();
+
+    writer.put(key1, value1)?;
+    writer.put(key2, value2)?;
+    writer.finalize()?;
+
+    let cursor = writer.into_inner()?;
+    let cdb = Cdb::<_, CdbHash>::new(cursor)?;
+
+    assert_eq!(cdb.get(key1)?.unwrap(), value1);
+    assert_eq!(cdb.get(key2)?.unwrap(), value2);
+
+    Ok(())
+}
