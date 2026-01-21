@@ -250,83 +250,48 @@ pub struct CdbKeyValue {
 /// Owned iterator that manages CDB iteration without lifetime issues
 /// This structure owns the CDB instance to avoid Rust lifetime complications in C FFI
 pub struct OwnedCdbIterator {
-    // Own the CDB to avoid lifetime issues; put it on the heap so its address is stable
-    cdb: Box<Cdb<File, CdbHash>>,
-    // Iterator state implemented without storing a borrowed iterator to avoid self-references
-    current_pos: u64,
-    end_pos: u64,
+    // Raw pointer to a heap-allocated Cdb; we own this allocation and will drop it in Drop
+    cdb_ptr: *mut Cdb<File, CdbHash>,
+    // The iterator that borrows the Cdb; created lazily and has 'static lifetime because it
+    // references the heap allocation at cdb_ptr which we control.
+    current_iterator: Option<cdb64::CdbIterator<'static, File, CdbHash>>,
 }
 
 impl OwnedCdbIterator {
-    /// Create a new owned iterator from a boxed Cdb
-    fn new(cdb: Box<Cdb<File, CdbHash>>) -> Self {
-        // calculate end_pos similar to cdb64::iterator::CdbIterator::new
-        let mut calculated_end_pos = u64::MAX;
-        let mut has_valid_table_offset = false;
-        for i in 0..256 {
-            let table_entry: &cdb64::cdb::TableEntry = &cdb.header[i];
-            if table_entry.length > 0 && table_entry.offset > 0 && table_entry.offset >= cdb64::cdb::HEADER_SIZE
-            {
-                calculated_end_pos = std::cmp::min(calculated_end_pos, table_entry.offset);
-                has_valid_table_offset = true;
-            }
-        }
-        let end_pos = if has_valid_table_offset { calculated_end_pos } else { cdb64::cdb::HEADER_SIZE };
-
+    /// Create a new owned iterator from a boxed Cdb by converting it into a raw pointer.
+    /// We keep ownership of the allocation and expose a 'static borrowed iterator into it.
+    fn new(boxed_cdb: Box<Cdb<File, CdbHash>>) -> Self {
+        let ptr = Box::into_raw(boxed_cdb);
         OwnedCdbIterator {
-            cdb,
-            current_pos: cdb64::cdb::HEADER_SIZE,
-            end_pos,
+            cdb_ptr: ptr,
+            current_iterator: None,
         }
     }
 
-    /// Get the next key-value pair
+    fn ensure_iterator(&mut self) {
+        if self.current_iterator.is_none() {
+            // Safe: cdb_ptr was created from Box and remains valid for the lifetime of self.
+            let cdb_ref: &'static Cdb<File, CdbHash> = unsafe { &*self.cdb_ptr };
+            self.current_iterator = Some(cdb_ref.iter());
+        }
+    }
+
     #[allow(clippy::complexity)]
     fn next(&mut self) -> Option<Result<(Vec<u8>, Vec<u8>), std::io::Error>> {
-        if self.current_pos >= self.end_pos {
-            return None;
+        self.ensure_iterator();
+        if let Some(ref mut iter) = self.current_iterator {
+            iter.next()
+        } else {
+            None
         }
+    }
+}
 
-        match cdb64::util::read_tuple(&self.cdb.reader, self.current_pos) {
-            Ok((key_len, val_len)) => {
-                let record_data_offset = self.current_pos + 16;
-                let total_record_len_with_header = 16 + key_len + val_len;
-
-                if self
-                    .current_pos
-                    .saturating_add(total_record_len_with_header)
-                    > self.end_pos
-                {
-                    return Some(Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Record extends beyond expected data end",
-                    )));
-                }
-
-                let mut key_buf = vec![0u8; key_len as usize];
-                if key_len > 0
-                    && let Err(e) = self
-                        .cdb
-                        .reader
-                        .read_exact_at(&mut key_buf, record_data_offset)
-                {
-                    return Some(Err(e));
-                }
-
-                let mut val_buf = vec![0u8; val_len as usize];
-                if val_len > 0
-                    && let Err(e) = self
-                        .cdb
-                        .reader
-                        .read_exact_at(&mut val_buf, record_data_offset + key_len)
-                {
-                    return Some(Err(e));
-                }
-                self.current_pos += total_record_len_with_header;
-
-                Some(Ok((key_buf, val_buf)))
-            }
-            Err(e) => Some(Err(e)),
+impl Drop for OwnedCdbIterator {
+    fn drop(&mut self) {
+        // Reconstruct and drop the boxed Cdb to free memory.
+        if !self.cdb_ptr.is_null() {
+            unsafe { drop(Box::from_raw(self.cdb_ptr)) }
         }
     }
 }
@@ -357,7 +322,7 @@ pub unsafe extern "C" fn cdb_iterator_new(reader_ptr: *mut CdbFile) -> *mut Owne
         Some(cdb) => cdb,
         None => {
             // restore ownership of the original CdbFile back to the caller to avoid dropping prematurely
-            Box::into_raw(cdb_file);
+            let _ = Box::into_raw(cdb_file);
             return ptr::null_mut();
         }
     };
