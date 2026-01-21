@@ -9,6 +9,10 @@ crate-type = ["cdylib"]
 [dependencies]
 cdb64 = { workspace = true }
 libc = "0.2"
+tempfile = "3"
+
+[dev-dependencies]
+cdb64_c = { path = "." }
 
 [build-dependencies]
 cbindgen = "0.29"
