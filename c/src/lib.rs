@@ -210,15 +210,13 @@ pub unsafe extern "C" fn cdb_get(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn cdb_free_data(data: CdbData) {
     if !data.ptr.is_null() {
-        // Reconstruct the boxed slice from raw parts and drop it.
-        // Use Vec::from_raw_parts to avoid creating an ephemeral &mut [u8]
+        // Reconstruct the boxed slice from the raw pointer and drop it.
+        // Use ptr::slice_from_raw_parts_mut to build the correct `*mut [u8]` for Box::from_raw.
         unsafe {
-            // data.ptr was created via Box<[u8]>::into_raw, which returns *mut [T] disguised
-            // as *mut T when cast. We can reconstruct the boxed slice using from_raw_parts.
             let ptr = data.ptr as *mut u8;
             let len = data.len as usize;
-            // Recreate a Vec to properly free the allocation
-            let _ = Vec::from_raw_parts(ptr, len, len);
+            let slice_ptr = std::ptr::slice_from_raw_parts_mut(ptr, len);
+            drop(Box::from_raw(slice_ptr));
         }
     }
 }
