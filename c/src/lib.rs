@@ -210,12 +210,16 @@ pub unsafe extern "C" fn cdb_get(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn cdb_free_data(data: CdbData) {
     if !data.ptr.is_null() {
+        // Reconstruct the boxed slice from raw parts and drop it.
+        // Use Vec::from_raw_parts to avoid creating an ephemeral &mut [u8]
         unsafe {
-            drop(Box::from_raw(slice::from_raw_parts_mut(
-                data.ptr as *mut u8,
-                data.len,
-            )))
-        };
+            // data.ptr was created via Box<[u8]>::into_raw, which returns *mut [T] disguised
+            // as *mut T when cast. We can reconstruct the boxed slice using from_raw_parts.
+            let ptr = data.ptr as *mut u8;
+            let len = data.len as usize;
+            // Recreate a Vec to properly free the allocation
+            let _ = Vec::from_raw_parts(ptr, len, len);
+        }
     }
 }
 
@@ -246,43 +250,83 @@ pub struct CdbKeyValue {
 /// Owned iterator that manages CDB iteration without lifetime issues
 /// This structure owns the CDB instance to avoid Rust lifetime complications in C FFI
 pub struct OwnedCdbIterator {
-    // Own the CDB to avoid lifetime issues
-    cdb: Cdb<File, CdbHash>,
-    // Iterator state - we'll manage this manually to avoid lifetime complications
-    current_iterator: Option<cdb64::CdbIterator<'static, File, CdbHash>>,
+    // Own the CDB to avoid lifetime issues; put it on the heap so its address is stable
+    cdb: Box<Cdb<File, CdbHash>>,
+    // Iterator state implemented without storing a borrowed iterator to avoid self-references
+    current_pos: u64,
+    end_pos: u64,
 }
 
 impl OwnedCdbIterator {
-    /// Create a new owned iterator
-    /// This function uses unsafe code to work around lifetime issues
-    fn new(cdb: Cdb<File, CdbHash>) -> Self {
+    /// Create a new owned iterator from a boxed Cdb
+    fn new(cdb: Box<Cdb<File, CdbHash>>) -> Self {
+        // calculate end_pos similar to cdb64::iterator::CdbIterator::new
+        let mut calculated_end_pos = u64::MAX;
+        let mut has_valid_table_offset = false;
+        for i in 0..256 {
+            let table_entry: &cdb64::cdb::TableEntry = &cdb.header[i];
+            if table_entry.length > 0 && table_entry.offset > 0 && table_entry.offset >= cdb64::cdb::HEADER_SIZE
+            {
+                calculated_end_pos = std::cmp::min(calculated_end_pos, table_entry.offset);
+                has_valid_table_offset = true;
+            }
+        }
+        let end_pos = if has_valid_table_offset { calculated_end_pos } else { cdb64::cdb::HEADER_SIZE };
+
         OwnedCdbIterator {
             cdb,
-            current_iterator: None,
-        }
-    }
-
-    /// Initialize the iterator (called on first next() call)
-    fn ensure_iterator(&mut self) {
-        if self.current_iterator.is_none() {
-            // SAFETY: We extend the lifetime to 'static here
-            // This is safe because:
-            // 1. The iterator will only be used while this OwnedCdbIterator exists
-            // 2. This OwnedCdbIterator owns the Cdb, so the Cdb will live as long as the iterator
-            // 3. C code cannot outlive the OwnedCdbIterator due to our API design
-            let cdb_ref: &'static Cdb<File, CdbHash> = unsafe { std::mem::transmute(&self.cdb) };
-            self.current_iterator = Some(cdb_ref.iter());
+            current_pos: cdb64::cdb::HEADER_SIZE,
+            end_pos,
         }
     }
 
     /// Get the next key-value pair
     #[allow(clippy::complexity)]
     fn next(&mut self) -> Option<Result<(Vec<u8>, Vec<u8>), std::io::Error>> {
-        self.ensure_iterator();
-        if let Some(ref mut iter) = self.current_iterator {
-            iter.next()
-        } else {
-            None
+        if self.current_pos >= self.end_pos {
+            return None;
+        }
+
+        match cdb64::util::read_tuple(&self.cdb.reader, self.current_pos) {
+            Ok((key_len, val_len)) => {
+                let record_data_offset = self.current_pos + 16;
+                let total_record_len_with_header = 16 + key_len + val_len;
+
+                if self
+                    .current_pos
+                    .saturating_add(total_record_len_with_header)
+                    > self.end_pos
+                {
+                    return Some(Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Record extends beyond expected data end",
+                    )));
+                }
+
+                let mut key_buf = vec![0u8; key_len as usize];
+                if key_len > 0
+                    && let Err(e) = self
+                        .cdb
+                        .reader
+                        .read_exact_at(&mut key_buf, record_data_offset)
+                {
+                    return Some(Err(e));
+                }
+
+                let mut val_buf = vec![0u8; val_len as usize];
+                if val_len > 0
+                    && let Err(e) = self
+                        .cdb
+                        .reader
+                        .read_exact_at(&mut val_buf, record_data_offset + key_len)
+                {
+                    return Some(Err(e));
+                }
+                self.current_pos += total_record_len_with_header;
+
+                Some(Ok((key_buf, val_buf)))
+            }
+            Err(e) => Some(Err(e)),
         }
     }
 }
@@ -305,16 +349,26 @@ pub unsafe extern "C" fn cdb_iterator_new(reader_ptr: *mut CdbFile) -> *mut Owne
         return ptr::null_mut();
     }
 
-    // Take ownership of the CdbFile
-    let cdb_file = unsafe { Box::from_raw(reader_ptr) };
+    // Take ownership of the CdbFile. We'll move the inner Cdb into a Box so its address is stable.
+    let mut cdb_file = unsafe { Box::from_raw(reader_ptr) };
 
-    // Extract the Cdb from CdbFile
-    let cdb = match cdb_file.reader {
+    // Extract the Cdb from CdbFile, restoring the CdbFile.reader to None to avoid double-drop
+    let cdb_inner = match cdb_file.reader.take() {
         Some(cdb) => cdb,
-        None => return ptr::null_mut(),
+        None => {
+            // restore ownership of the original CdbFile back to the caller to avoid dropping prematurely
+            Box::into_raw(cdb_file);
+            return ptr::null_mut();
+        }
     };
 
-    Box::into_raw(Box::new(OwnedCdbIterator::new(cdb)))
+    // Box the cdb to guarantee a stable heap address for iterator usage
+    let boxed_cdb = Box::new(cdb_inner);
+
+    // We no longer need cdb_file; drop it
+    drop(cdb_file);
+
+    Box::into_raw(Box::new(OwnedCdbIterator::new(boxed_cdb)))
 }
 
 /// Get the next key-value pair from the iterator
@@ -362,7 +416,16 @@ pub unsafe extern "C" fn cdb_iterator_next(
 
             CDB_ITERATOR_HAS_NEXT
         }
-        Some(Err(_)) => CDB_ERROR_IO,
+        Some(Err(_)) => {
+            // Ensure kv_out is initialized on error to avoid caller freeing uninitialized pointers
+            unsafe {
+                (*kv_out).key.ptr = ptr::null();
+                (*kv_out).key.len = 0;
+                (*kv_out).value.ptr = ptr::null();
+                (*kv_out).value.len = 0;
+            }
+            CDB_ERROR_IO
+        }
         None => {
             // No more entries
             unsafe {
