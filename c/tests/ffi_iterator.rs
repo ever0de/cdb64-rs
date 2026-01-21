@@ -46,14 +46,14 @@ fn ffi_iterator_integration_roundtrip() {
         // iterate
         let mut found = Vec::new();
         loop {
-            let mut kv = CdbKeyValue { key: CdbData { ptr: ptr::null(), len: 0 }, value: CdbData { ptr: ptr::null(), len: 0 } };
+            let mut kv = cdb64_c::test_accessors::new_empty_kv();
             let rc = cdb_iterator_next(iter, &mut kv as *mut CdbKeyValue);
             if rc == CDB_ITERATOR_HAS_NEXT {
                 // read key via test accessors
-                let key_ptr = crate::test_accessors::get_key_ptr(&kv);
-                let key_len = crate::test_accessors::get_key_len(&kv);
-                let val_ptr = crate::test_accessors::get_val_ptr(&kv);
-                let val_len = crate::test_accessors::get_val_len(&kv);
+                let key_ptr = cdb64_c::test_accessors::get_key_ptr(&kv);
+                let key_len = cdb64_c::test_accessors::get_key_len(&kv);
+                let val_ptr = cdb64_c::test_accessors::get_val_ptr(&kv);
+                let val_len = cdb64_c::test_accessors::get_val_len(&kv);
 
                 let key_slice = if !key_ptr.is_null() && key_len > 0 {
                     slice::from_raw_parts(key_ptr, key_len)
@@ -68,8 +68,8 @@ fn ffi_iterator_integration_roundtrip() {
                 found.push((key_slice.to_vec(), val_slice.to_vec()));
 
                 // take ownership and free allocated data
-                let kdata = crate::test_accessors::take_key(&mut kv);
-                let vdata = crate::test_accessors::take_value(&mut kv);
+                let kdata = cdb64_c::test_accessors::take_key(&mut kv);
+                let vdata = cdb64_c::test_accessors::take_value(&mut kv);
                 cdb_free_data(kdata);
                 cdb_free_data(vdata);
             } else if rc == CDB_ITERATOR_FINISHED {

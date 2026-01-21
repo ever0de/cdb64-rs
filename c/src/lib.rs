@@ -282,6 +282,13 @@ pub mod test_accessors {
         kv.value.len = 0;
         taken
     }
+
+    pub fn new_empty_kv() -> CdbKeyValue {
+        CdbKeyValue {
+            key: CdbData { ptr: ptr::null(), len: 0 },
+            value: CdbData { ptr: ptr::null(), len: 0 },
+        }
+    }
 }
 
 /// Owned iterator that manages CDB iteration without lifetime issues
