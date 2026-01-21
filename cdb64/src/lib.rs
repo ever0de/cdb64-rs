@@ -100,6 +100,11 @@ pub use hash::CdbHash;
 pub use iterator::CdbIterator;
 pub use util::ReaderAt;
 pub use writer::CdbWriter;
+// Hidden helper re-exports for FFI crate use (not part of public API surface)
+#[doc(hidden)]
+pub use util::{read_tuple, write_tuple};
+#[doc(hidden)]
+pub use cdb::HEADER_SIZE;
 
 /// Errors that can occur when working with CDB databases.
 #[derive(Debug, thiserror::Error)]
