@@ -500,7 +500,7 @@ pub mod miri_test_helpers {
         }
     }
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn cdb_iterator_new_from_boxed_cdb_cursor(
         cdb_ptr: *mut cdb64::Cdb<Cursor<Vec<u8>>, CdbHash>,
     ) -> *mut OwnedCdbIteratorCursor {
@@ -511,7 +511,7 @@ pub mod miri_test_helpers {
         Box::into_raw(Box::new(OwnedCdbIteratorCursor::new(boxed)))
     }
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn cdb_iterator_next_cursor(
         iter_ptr: *mut OwnedCdbIteratorCursor,
         kv_out: *mut CdbKeyValue,
@@ -549,7 +549,7 @@ pub mod miri_test_helpers {
         }
     }
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn cdb_iterator_free_cursor(iter_ptr: *mut OwnedCdbIteratorCursor) {
         if !iter_ptr.is_null() {
             drop(Box::from_raw(iter_ptr));
