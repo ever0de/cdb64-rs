@@ -429,3 +429,130 @@ pub unsafe extern "C" fn cdb_iterator_free(iter_ptr: *mut OwnedCdbIterator) {
         unsafe { drop(Box::from_raw(iter_ptr)) };
     }
 }
+
+// Test-only helpers to allow Miri-friendly, in-memory FFI testing without touching the filesystem.
+// These are only compiled for `cfg(test)` so they don't affect production API.
+#[cfg(test)]
+pub mod miri_test_helpers {
+    use super::*;
+    use std::io::Cursor;
+
+    // Owned iterator specialized for Cursor-backed Cdb for testing under Miri isolation.
+    pub struct OwnedCdbIteratorCursor {
+        cdb: Box<cdb64::Cdb<Cursor<Vec<u8>>, CdbHash>>,
+        current_pos: u64,
+        end_pos: u64,
+    }
+
+    impl OwnedCdbIteratorCursor {
+        pub fn new(boxed_cdb: Box<cdb64::Cdb<Cursor<Vec<u8>>, CdbHash>>) -> Self {
+            let (start, end) = boxed_cdb.data_range();
+            OwnedCdbIteratorCursor {
+                cdb: boxed_cdb,
+                current_pos: start,
+                end_pos: end,
+            }
+        }
+
+        pub fn next(&mut self) -> Option<Result<(Vec<u8>, Vec<u8>), std::io::Error>> {
+            if self.current_pos >= self.end_pos {
+                return None;
+            }
+            match self.cdb.read_tuple_at(self.current_pos) {
+                Ok((key_len, val_len)) => {
+                    let record_data_offset = self.current_pos + 16;
+                    let total_record_len_with_header = 16 + key_len + val_len;
+                    if self
+                        .current_pos
+                        .saturating_add(total_record_len_with_header)
+                        > self.end_pos
+                    {
+                        return Some(Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "Record extends beyond expected data end",
+                        )));
+                    }
+
+                    let mut key_buf = vec![0u8; key_len as usize];
+                    if key_len > 0 {
+                        if let Err(e) = self.cdb.read_exact_at_for_ffi(&mut key_buf, record_data_offset) {
+                            return Some(Err(e));
+                        }
+                    }
+
+                    let mut val_buf = vec![0u8; val_len as usize];
+                    if val_len > 0 {
+                        if let Err(e) = self.cdb.read_exact_at_for_ffi(&mut val_buf, record_data_offset + key_len) {
+                            return Some(Err(e));
+                        }
+                    }
+                    self.current_pos += total_record_len_with_header;
+                    Some(Ok((key_buf, val_buf)))
+                }
+                Err(e) => Some(Err(e)),
+            }
+        }
+    }
+
+    impl Drop for OwnedCdbIteratorCursor {
+        fn drop(&mut self) {
+            // Box will be dropped automatically
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn cdb_iterator_new_from_boxed_cdb_cursor(
+        cdb_ptr: *mut cdb64::Cdb<Cursor<Vec<u8>>, CdbHash>,
+    ) -> *mut OwnedCdbIteratorCursor {
+        if cdb_ptr.is_null() {
+            return ptr::null_mut();
+        }
+        let boxed = Box::from_raw(cdb_ptr);
+        Box::into_raw(Box::new(OwnedCdbIteratorCursor::new(boxed)))
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn cdb_iterator_next_cursor(
+        iter_ptr: *mut OwnedCdbIteratorCursor,
+        kv_out: *mut CdbKeyValue,
+    ) -> c_int {
+        if iter_ptr.is_null() || kv_out.is_null() {
+            return CDB_ERROR_NULL_POINTER;
+        }
+        let iterator = &mut *iter_ptr;
+        match iterator.next() {
+            Some(Ok((key, value))) => {
+                let key_len = key.len();
+                let key_boxed = key.into_boxed_slice();
+                let value_len = value.len();
+                let value_boxed = value.into_boxed_slice();
+                (*kv_out).key.ptr = Box::into_raw(key_boxed) as *const c_uchar;
+                (*kv_out).key.len = key_len;
+                (*kv_out).value.ptr = Box::into_raw(value_boxed) as *const c_uchar;
+                (*kv_out).value.len = value_len;
+                CDB_ITERATOR_HAS_NEXT
+            }
+            Some(Err(_)) => {
+                (*kv_out).key.ptr = ptr::null();
+                (*kv_out).key.len = 0;
+                (*kv_out).value.ptr = ptr::null();
+                (*kv_out).value.len = 0;
+                CDB_ERROR_IO
+            }
+            None => {
+                (*kv_out).key.ptr = ptr::null();
+                (*kv_out).key.len = 0;
+                (*kv_out).value.ptr = ptr::null();
+                (*kv_out).value.len = 0;
+                CDB_ITERATOR_FINISHED
+            }
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn cdb_iterator_free_cursor(iter_ptr: *mut OwnedCdbIteratorCursor) {
+        if !iter_ptr.is_null() {
+            drop(Box::from_raw(iter_ptr));
+        }
+    }
+}
