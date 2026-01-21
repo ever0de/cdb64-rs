@@ -146,8 +146,8 @@ pub unsafe extern "C" fn cdb_open(path: *const c_char) -> *mut CdbFile {
 // Option 2: We allocate, caller must free using a provided function. (Chosen here)
 #[repr(C)]
 pub struct CdbData {
-    pub ptr: *const c_uchar,
-    pub len: size_t,
+    ptr: *const c_uchar,
+    len: size_t,
 }
 
 /// # Safety
@@ -241,8 +241,48 @@ pub const CDB_ITERATOR_FINISHED: c_int = 0;
 /// Memory pointed to by key_ptr and value_ptr must be freed using cdb_free_data
 #[repr(C)]
 pub struct CdbKeyValue {
-    pub key: CdbData,
-    pub value: CdbData,
+    key: CdbData,
+    value: CdbData,
+}
+
+// Test-only accessors to interact with CdbData/CdbKeyValue in integration tests.
+// These are compiled only for test builds so the fields remain private in production.
+#[cfg(test)]
+#[doc(hidden)]
+pub mod test_accessors {
+    use super::*;
+    use std::ptr;
+
+    pub fn get_key_ptr(kv: &CdbKeyValue) -> *const c_uchar {
+        kv.key.ptr
+    }
+
+    pub fn get_key_len(kv: &CdbKeyValue) -> size_t {
+        kv.key.len
+    }
+
+    pub fn get_val_ptr(kv: &CdbKeyValue) -> *const c_uchar {
+        kv.value.ptr
+    }
+
+    pub fn get_val_len(kv: &CdbKeyValue) -> size_t {
+        kv.value.len
+    }
+
+    // Take ownership of the key/value CdbData out of the kv struct and replace with nulls
+    pub fn take_key(kv: &mut CdbKeyValue) -> CdbData {
+        let taken = CdbData { ptr: kv.key.ptr, len: kv.key.len };
+        kv.key.ptr = ptr::null();
+        kv.key.len = 0;
+        taken
+    }
+
+    pub fn take_value(kv: &mut CdbKeyValue) -> CdbData {
+        let taken = CdbData { ptr: kv.value.ptr, len: kv.value.len };
+        kv.value.ptr = ptr::null();
+        kv.value.len = 0;
+        taken
+    }
 }
 
 /// Owned iterator that manages CDB iteration without lifetime issues
