@@ -146,8 +146,8 @@ pub unsafe extern "C" fn cdb_open(path: *const c_char) -> *mut CdbFile {
 // Option 2: We allocate, caller must free using a provided function. (Chosen here)
 #[repr(C)]
 pub struct CdbData {
-    ptr: *const c_uchar,
-    len: size_t,
+    pub ptr: *const c_uchar,
+    pub len: size_t,
 }
 
 /// # Safety
@@ -241,8 +241,8 @@ pub const CDB_ITERATOR_FINISHED: c_int = 0;
 /// Memory pointed to by key_ptr and value_ptr must be freed using cdb_free_data
 #[repr(C)]
 pub struct CdbKeyValue {
-    key: CdbData,
-    value: CdbData,
+    pub key: CdbData,
+    pub value: CdbData,
 }
 
 /// Owned iterator that manages CDB iteration without lifetime issues
