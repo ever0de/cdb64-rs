@@ -431,8 +431,8 @@ pub unsafe extern "C" fn cdb_iterator_free(iter_ptr: *mut OwnedCdbIterator) {
 }
 
 // Test-only helpers to allow Miri-friendly, in-memory FFI testing without touching the filesystem.
-// These are only compiled for `cfg(test)` so they don't affect production API.
-#[cfg(test)]
+// Exposed for integration tests and Miri; not intended for public API use.
+#[doc(hidden)]
 pub mod miri_test_helpers {
     use super::*;
     use std::io::Cursor;
