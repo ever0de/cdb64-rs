@@ -3,6 +3,7 @@ use std::{ffi::CString, ptr, slice};
 use tempfile::NamedTempFile;
 
 // Reuse the C FFI functions from this crate
+// import symbols from the tested crate
 use cdb64_c::{
     cdb_writer_create, cdb_writer_put, cdb_writer_finalize, cdb_writer_free, cdb_open,
     cdb_iterator_new, cdb_iterator_next, cdb_iterator_free, cdb_free_data,
@@ -48,22 +49,29 @@ fn ffi_iterator_integration_roundtrip() {
             let mut kv = CdbKeyValue { key: CdbData { ptr: ptr::null(), len: 0 }, value: CdbData { ptr: ptr::null(), len: 0 } };
             let rc = cdb_iterator_next(iter, &mut kv as *mut CdbKeyValue);
             if rc == CDB_ITERATOR_HAS_NEXT {
-                // read key
-                let key_slice = if !kv.key.ptr.is_null() && kv.key.len > 0 {
-                    slice::from_raw_parts(kv.key.ptr, kv.key.len)
+                // read key via test accessors
+                let key_ptr = crate::test_accessors::get_key_ptr(&kv);
+                let key_len = crate::test_accessors::get_key_len(&kv);
+                let val_ptr = crate::test_accessors::get_val_ptr(&kv);
+                let val_len = crate::test_accessors::get_val_len(&kv);
+
+                let key_slice = if !key_ptr.is_null() && key_len > 0 {
+                    slice::from_raw_parts(key_ptr, key_len)
                 } else {
                     &[]
                 };
-                let val_slice = if !kv.value.ptr.is_null() && kv.value.len > 0 {
-                    slice::from_raw_parts(kv.value.ptr, kv.value.len)
+                let val_slice = if !val_ptr.is_null() && val_len > 0 {
+                    slice::from_raw_parts(val_ptr, val_len)
                 } else {
                     &[]
                 };
                 found.push((key_slice.to_vec(), val_slice.to_vec()));
 
-                // free allocated data
-                cdb_free_data(kv.key);
-                cdb_free_data(kv.value);
+                // take ownership and free allocated data
+                let kdata = crate::test_accessors::take_key(&mut kv);
+                let vdata = crate::test_accessors::take_value(&mut kv);
+                cdb_free_data(kdata);
+                cdb_free_data(vdata);
             } else if rc == CDB_ITERATOR_FINISHED {
                 break;
             } else {
