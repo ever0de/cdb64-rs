@@ -245,9 +245,8 @@ pub struct CdbKeyValue {
     value: CdbData,
 }
 
-// Test-only accessors to interact with CdbData/CdbKeyValue in integration tests.
-// These are compiled only for test builds so the fields remain private in production.
-#[cfg(test)]
+// Accessors to interact with CdbData/CdbKeyValue from integration tests.
+// Kept doc-hidden to avoid polluting public API surface.
 #[doc(hidden)]
 pub mod test_accessors {
     use super::*;
