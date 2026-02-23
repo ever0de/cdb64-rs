@@ -1,0 +1,23 @@
+c/tests/ffi_iterator.rs
+  d006513267816938 9,43,86-89,95-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.4",
+  "base_commit_sha": "58e1cf0bce520bb9ae7f8f6efb85e022b0cb2f26",
+  "prompts": {
+    "d006513267816938": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "0839e6ce-bd26-4489-97f7-9c2031785c55",
+        "model": "copilot/claude-sonnet-4.6"
+      },
+      "human_author": "Jiseok CHOI <jiseok.dev@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 58,
+      "overriden_lines": 0
+    }
+  }
+}
