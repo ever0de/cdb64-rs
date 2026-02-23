@@ -1,9 +1,83 @@
-use std::io::{self, ErrorKind};
+use std::{
+    io::{self, ErrorKind},
+    sync::Arc,
+};
 
 use crate::{
     cdb::{Cdb, HEADER_SIZE, TableEntry},
     util::{ReaderAt, read_tuple},
 };
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+/// Compute the `(start, end)` byte positions of the data section in `cdb`.
+pub(crate) fn compute_data_range<R: ReaderAt, H: std::hash::Hasher + Default>(
+    cdb: &Cdb<R, H>,
+) -> (u64, u64) {
+    let mut end = u64::MAX;
+    let mut found = false;
+    for i in 0..256 {
+        let entry: &TableEntry = &cdb.header[i];
+        if entry.length > 0 && entry.offset >= HEADER_SIZE {
+            end = end.min(entry.offset);
+            found = true;
+        }
+    }
+    (HEADER_SIZE, if found { end } else { HEADER_SIZE })
+}
+
+/// Core iteration step shared by both iterator types.
+///
+/// Advances `current_pos` by one record and returns the key-value pair, or
+/// `None` if `current_pos >= end_pos`.  All I/O is done through the `cdb`
+/// reader, so neither call-site needs to duplicate this logic.
+fn advance<R: ReaderAt, H: std::hash::Hasher + Default>(
+    cdb: &Cdb<R, H>,
+    current_pos: &mut u64,
+    end_pos: u64,
+) -> Option<io::Result<(Vec<u8>, Vec<u8>)>> {
+    if *current_pos >= end_pos {
+        return None;
+    }
+
+    match read_tuple(&cdb.reader, *current_pos) {
+        Ok((key_len, val_len)) => {
+            let data_offset = *current_pos + 16;
+            let record_len = 16 + key_len + val_len;
+
+            if current_pos.saturating_add(record_len) > end_pos {
+                return Some(Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "Record extends beyond expected data end",
+                )));
+            }
+
+            let mut key_buf = vec![0u8; key_len as usize];
+            if key_len > 0
+                && let Err(e) = cdb.reader.read_exact_at(&mut key_buf, data_offset)
+            {
+                return Some(Err(e));
+            }
+
+            let mut val_buf = vec![0u8; val_len as usize];
+            if val_len > 0
+                && let Err(e) = cdb.reader.read_exact_at(&mut val_buf, data_offset + key_len)
+            {
+                return Some(Err(e));
+            }
+
+            *current_pos += record_len;
+            Some(Ok((key_buf, val_buf)))
+        }
+        Err(e) => Some(Err(e)),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Borrow-based iterator (normal Rust API)
+// ---------------------------------------------------------------------------
 
 /// Represents a sequential iterator over a CDB database.
 ///
@@ -49,82 +123,81 @@ pub struct CdbIterator<'cdb, R: ReaderAt, H: std::hash::Hasher + Default = crate
 impl<'cdb, R: ReaderAt, H: std::hash::Hasher + Default> CdbIterator<'cdb, R, H> {
     /// Creates an iterator that borrows the Cdb immutably for its lifetime.
     pub fn new(cdb: &'cdb Cdb<R, H>) -> Self {
-        let mut calculated_end_pos = u64::MAX;
-        let mut has_valid_table_offset = false;
-        for i in 0..256 {
-            let table_entry: &TableEntry = &cdb.header[i];
-            if table_entry.length > 0 && table_entry.offset > 0 && table_entry.offset >= HEADER_SIZE
-            {
-                calculated_end_pos = std::cmp::min(calculated_end_pos, table_entry.offset);
-                has_valid_table_offset = true;
-            }
-        }
-        let end_pos = if has_valid_table_offset {
-            calculated_end_pos
-        } else {
-            HEADER_SIZE
-        };
-
-        CdbIterator {
-            cdb,
-            current_pos: HEADER_SIZE,
-            end_pos,
-        }
+        let (start, end) = compute_data_range(cdb);
+        CdbIterator { cdb, current_pos: start, end_pos: end }
     }
 }
 
-impl<'a, R: ReaderAt, H: std::hash::Hasher + Default> Iterator for CdbIterator<'a, R, H> {
-    type Item = Result<(Vec<u8>, Vec<u8>), io::Error>;
+impl<R: ReaderAt, H: std::hash::Hasher + Default> Iterator for CdbIterator<'_, R, H> {
+    type Item = io::Result<(Vec<u8>, Vec<u8>)>;
 
-    /// Advances the iterator and reads the next key/value pair.
-    /// Returns `Some(Ok((key, value)))` if a record was successfully read.
-    /// Returns `Some(Err(e))` if an error occurs.
-    /// Returns `None` if the end of the database is reached.
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current_pos >= self.end_pos {
-            return None;
-        }
+        advance(self.cdb, &mut self.current_pos, self.end_pos)
+    }
+}
 
-        match read_tuple(&self.cdb.reader, self.current_pos) {
-            Ok((key_len, val_len)) => {
-                let record_data_offset = self.current_pos + 16;
-                let total_record_len_with_header = 16 + key_len + val_len;
+// ---------------------------------------------------------------------------
+// Arc-owned iterator (FFI / shared-ownership API)
+// ---------------------------------------------------------------------------
 
-                if self
-                    .current_pos
-                    .saturating_add(total_record_len_with_header)
-                    > self.end_pos
-                {
-                    return Some(Err(io::Error::new(
-                        ErrorKind::InvalidData,
-                        "Record extends beyond expected data end",
-                    )));
-                }
+/// An iterator over a CDB database that shares ownership of the database via
+/// [`Arc`].
+///
+/// Use this when you need an iterator that is not tied to the lifetime of a
+/// particular `Cdb` reference — for example in FFI code where Rust lifetimes
+/// cannot cross language boundaries, or when you want to keep both a reader
+/// handle and an active iterator alive at the same time.
+///
+/// Unlike [`CdbIterator`], `ArcCdbIterator` does **not** borrow the `Cdb`; it
+/// holds an `Arc` clone, so no lifetime parameter is required.  The underlying
+/// database is kept alive until the last `Arc` reference (either the iterator's
+/// own clone or the original `CdbFile` wrapper's clone) is dropped.
+///
+/// Data is read **lazily** on each [`Iterator::next`] call — nothing is
+/// pre-loaded into memory.
+///
+/// # Example
+///
+/// ```rust
+/// use cdb64::{Cdb, CdbWriter, CdbHash, ArcCdbIterator};
+/// use std::{io::Cursor, sync::Arc};
+///
+/// let mut writer = CdbWriter::<_, CdbHash>::new(Cursor::new(Vec::new())).unwrap();
+/// writer.put(b"key1", b"value1").unwrap();
+/// writer.finalize().unwrap();
+///
+/// let cursor = writer.into_inner().unwrap();
+/// let cdb = Arc::new(Cdb::<_, CdbHash>::new(cursor).unwrap());
+///
+/// // Clone the Arc — both the original handle and the iterator stay alive.
+/// let iter = ArcCdbIterator::new(Arc::clone(&cdb));
+/// for result in iter {
+///     let (key, value) = result.unwrap();
+///     println!("Key: {:?}, Value: {:?}", key, value);
+/// }
+/// // `cdb` is still valid here.
+/// assert!(cdb.get(b"key1").unwrap().is_some());
+/// ```
+pub struct ArcCdbIterator<R: ReaderAt, H: std::hash::Hasher + Default = crate::hash::CdbHash> {
+    cdb: Arc<Cdb<R, H>>,
+    current_pos: u64,
+    end_pos: u64,
+}
 
-                let mut key_buf = vec![0u8; key_len as usize];
-                if key_len > 0
-                    && let Err(e) = self
-                        .cdb
-                        .reader
-                        .read_exact_at(&mut key_buf, record_data_offset)
-                {
-                    return Some(Err(e));
-                }
+impl<R: ReaderAt, H: std::hash::Hasher + Default> ArcCdbIterator<R, H> {
+    /// Creates an iterator that shares ownership of `cdb` via an `Arc` clone.
+    ///
+    /// This does **not** consume `cdb`; callers retain their own `Arc` reference.
+    pub fn new(cdb: Arc<Cdb<R, H>>) -> Self {
+        let (start, end) = compute_data_range(&cdb);
+        ArcCdbIterator { cdb, current_pos: start, end_pos: end }
+    }
+}
 
-                let mut val_buf = vec![0u8; val_len as usize];
-                if val_len > 0
-                    && let Err(e) = self
-                        .cdb
-                        .reader
-                        .read_exact_at(&mut val_buf, record_data_offset + key_len)
-                {
-                    return Some(Err(e));
-                }
-                self.current_pos += total_record_len_with_header;
+impl<R: ReaderAt, H: std::hash::Hasher + Default> Iterator for ArcCdbIterator<R, H> {
+    type Item = io::Result<(Vec<u8>, Vec<u8>)>;
 
-                Some(Ok((key_buf, val_buf)))
-            }
-            Err(e) => Some(Err(e)),
-        }
+    fn next(&mut self) -> Option<Self::Item> {
+        advance(&self.cdb, &mut self.current_pos, self.end_pos)
     }
 }

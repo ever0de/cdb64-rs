@@ -166,34 +166,6 @@ impl<R: ReaderAt, H: Hasher + Default> Cdb<R, H> {
         Ok(())
     }
 
-    /// Helper for FFI usage: compute iterator data range (start, end).
-    #[doc(hidden)]
-    pub fn data_range(&self) -> (u64, u64) {
-        let mut calculated_end_pos = u64::MAX;
-        let mut has_valid_table_offset = false;
-        for i in 0..256 {
-            let table_entry: &TableEntry = &self.header[i];
-            if table_entry.length > 0 && table_entry.offset > 0 && table_entry.offset >= HEADER_SIZE {
-                calculated_end_pos = std::cmp::min(calculated_end_pos, table_entry.offset);
-                has_valid_table_offset = true;
-            }
-        }
-        let end_pos = if has_valid_table_offset { calculated_end_pos } else { HEADER_SIZE };
-        (HEADER_SIZE, end_pos)
-    }
-
-    /// Helper for FFI usage: read_exact_at via the internal reader.
-    #[doc(hidden)]
-    pub fn read_exact_at_for_ffi(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
-        self.reader.read_exact_at(buf, offset)
-    }
-
-    /// Helper for FFI usage: read tuple (two u64) at the given offset.
-    #[doc(hidden)]
-    pub fn read_tuple_at(&self, offset: u64) -> io::Result<(u64, u64)> {
-        crate::util::read_tuple(&self.reader, offset)
-    }
-
     #[cfg(feature = "mmap")]
     fn read_header_from_mmap(&mut self) -> io::Result<()> {
         if let Some(mmap_ref) = self.mmap.as_ref() {
