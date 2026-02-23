@@ -1,0 +1,25 @@
+cdb64/src/lib.rs
+  d006513267816938 100
+cdb64/src/iterator.rs
+  d006513267816938 1-3,11-52,56-59,63-76,78-81,126-127,131-132,135-137,139-193,197-198,201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.4",
+  "base_commit_sha": "ea67b7898330a7426ea44c0cb6853557e68efc4d",
+  "prompts": {
+    "d006513267816938": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "0839e6ce-bd26-4489-97f7-9c2031785c55",
+        "model": "copilot/claude-sonnet-4.6"
+      },
+      "human_author": "Jiseok CHOI <jiseok.dev@gmail.com>",
+      "messages": [],
+      "total_additions": 348,
+      "total_deletions": 350,
+      "accepted_lines": 259,
+      "overriden_lines": 0
+    }
+  }
+}
