@@ -1,6 +1,6 @@
-use cdb64::{Cdb, CdbHash, CdbWriter};
+use cdb64::{ArcCdbIterator, Cdb, CdbHash, CdbWriter};
 use libc::{c_char, c_int, c_uchar, size_t};
-use std::{ffi::CStr, fs::File, path::Path, ptr, slice};
+use std::{ffi::CStr, fs::File, path::Path, ptr, slice, sync::Arc};
 
 // --- Error Handling ---
 // 0 for success, -1 for generic error, specific positive values for specific errors.
@@ -113,8 +113,11 @@ pub unsafe extern "C" fn cdb_writer_free(writer_ptr: *mut CdbWriterFile) {
 }
 
 // --- Reader Struct Wrapper ---
+/// Holds a shared reference to the underlying CDB reader.
+/// Using `Arc` allows independent iterators to coexist with the reader
+/// without transferring ownership.
 pub struct CdbFile {
-    reader: Option<Cdb<File, CdbHash>>,
+    reader: Arc<Cdb<File, CdbHash>>,
 }
 
 /// # Safety
@@ -135,7 +138,7 @@ pub unsafe extern "C" fn cdb_open(path: *const c_char) -> *mut CdbFile {
 
     match Cdb::<File, CdbHash>::open(Path::new(path_str)) {
         Ok(reader) => Box::into_raw(Box::new(CdbFile {
-            reader: Some(reader),
+            reader: Arc::new(reader),
         })),
         Err(_) => ptr::null_mut(),
     }
@@ -167,14 +170,10 @@ pub unsafe extern "C" fn cdb_get(
     if reader_ptr.is_null() || key_ptr.is_null() || value_out.is_null() {
         return CDB_ERROR_NULL_POINTER;
     }
-    let reader_wrapper = unsafe { &mut *reader_ptr };
-    let reader = match reader_wrapper.reader.as_mut() {
-        Some(r) => r,
-        None => return CDB_ERROR_OPERATION_FAILED,
-    };
+    let reader_wrapper = unsafe { &*reader_ptr };
     let key = unsafe { slice::from_raw_parts(key_ptr, key_len) };
 
-    match reader.get(key) {
+    match reader_wrapper.reader.get(key) {
         Ok(Some(value_vec)) => {
             let len = value_vec.len();
             let boxed_slice = value_vec.into_boxed_slice();
@@ -237,14 +236,26 @@ pub unsafe extern "C" fn cdb_close(reader_ptr: *mut CdbFile) {
 pub const CDB_ITERATOR_HAS_NEXT: c_int = 1;
 pub const CDB_ITERATOR_FINISHED: c_int = 0;
 
-/// C-compatible structure for key-value pairs
-/// Memory pointed to by key_ptr and value_ptr must be freed using cdb_free_data
+/// C-compatible structure for key-value pairs.
+/// Memory pointed to by key_ptr and value_ptr must be freed using `cdb_free_data`.
 #[repr(C)]
 pub struct CdbKeyValue {
     key: CdbData,
     value: CdbData,
 }
 
+/// Opaque iterator type for the C API.
+///
+/// Wraps [`ArcCdbIterator<File, CdbHash>`] which shares ownership of the
+/// underlying `Cdb` via `Arc`.  This means:
+///
+/// - Creating an iterator does **not** consume the originating `CdbFile`; both
+///   can be used independently after `cdb_iterator_new`.
+/// - Data is read lazily on each `cdb_iterator_next` call — nothing is
+///   pre-loaded into memory.
+pub struct OwnedCdbIterator(ArcCdbIterator<File, CdbHash>);
+
+// ---------------------------------------------------------------------------
 // Accessors to interact with CdbData/CdbKeyValue from integration tests.
 // Kept doc-hidden to avoid polluting public API surface.
 #[doc(hidden)]
@@ -289,69 +300,18 @@ pub mod test_accessors {
             value: CdbData { ptr: ptr::null(), len: 0 },
         }
     }
-}
 
-/// Owned iterator that manages CDB iteration without lifetime issues
-/// This structure owns the CDB instance to avoid Rust lifetime complications in C FFI
-pub struct OwnedCdbIterator {
-    // Own the CDB on the heap to guarantee stable address and avoid borrowing issues.
-    cdb: Box<Cdb<File, CdbHash>>,
-    current_pos: u64,
-    end_pos: u64,
-}
-
-impl OwnedCdbIterator {
-    /// Create a new owned iterator from a boxed Cdb. Compute data range using helper.
-    fn new(boxed_cdb: Box<Cdb<File, CdbHash>>) -> Self {
-        let (start, end) = boxed_cdb.data_range();
-        OwnedCdbIterator {
-            cdb: boxed_cdb,
-            current_pos: start,
-            end_pos: end,
-        }
+    /// Create an empty `CdbData` suitable for passing to `cdb_get` as an out-parameter.
+    pub fn new_empty_data() -> CdbData {
+        CdbData { ptr: ptr::null(), len: 0 }
     }
 
-    #[allow(clippy::complexity)]
-    fn next(&mut self) -> Option<Result<(Vec<u8>, Vec<u8>), std::io::Error>> {
-        if self.current_pos >= self.end_pos {
-            return None;
-        }
+    pub fn get_data_ptr(data: &CdbData) -> *const c_uchar {
+        data.ptr
+    }
 
-        match self.cdb.read_tuple_at(self.current_pos) {
-            Ok((key_len, val_len)) => {
-                let record_data_offset = self.current_pos + 16;
-                let total_record_len_with_header = 16 + key_len + val_len;
-
-                if self
-                    .current_pos
-                    .saturating_add(total_record_len_with_header)
-                    > self.end_pos
-                {
-                    return Some(Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Record extends beyond expected data end",
-                    )));
-                }
-
-                let mut key_buf = vec![0u8; key_len as usize];
-                if key_len > 0 {
-                    if let Err(e) = self.cdb.read_exact_at_for_ffi(&mut key_buf, record_data_offset) {
-                        return Some(Err(e));
-                    }
-                }
-
-                let mut val_buf = vec![0u8; val_len as usize];
-                if val_len > 0 {
-                    if let Err(e) = self.cdb.read_exact_at_for_ffi(&mut val_buf, record_data_offset + key_len) {
-                        return Some(Err(e));
-                    }
-                }
-
-                self.current_pos += total_record_len_with_header;
-                Some(Ok((key_buf, val_buf)))
-            }
-            Err(e) => Some(Err(e)),
-        }
+    pub fn get_data_len(data: &CdbData) -> size_t {
+        data.len
     }
 }
 
@@ -361,8 +321,8 @@ impl OwnedCdbIterator {
 ///
 /// `reader_ptr` must be a valid pointer to a `CdbFile` obtained from `cdb_open`.
 /// The returned iterator must be freed with `cdb_iterator_free`.
-/// After calling this function, `reader_ptr` should not be used directly as ownership
-/// is transferred to the iterator.
+/// `reader_ptr` remains valid after this call and may be used concurrently with
+/// the returned iterator (e.g. for `cdb_get` lookups).
 ///
 /// # Returns
 ///
@@ -373,26 +333,13 @@ pub unsafe extern "C" fn cdb_iterator_new(reader_ptr: *mut CdbFile) -> *mut Owne
         return ptr::null_mut();
     }
 
-    // Take ownership of the CdbFile. We'll move the inner Cdb into a Box so its address is stable.
-    let mut cdb_file = unsafe { Box::from_raw(reader_ptr) };
+    // Borrow the CdbFile — do NOT take ownership. Clone the Arc so both the
+    // reader and the iterator share the same Cdb without either consuming the other.
+    let cdb_file = unsafe { &*reader_ptr };
+    let arc_clone = Arc::clone(&cdb_file.reader);
+    let iter = ArcCdbIterator::new(arc_clone);
 
-    // Extract the Cdb from CdbFile, restoring the CdbFile.reader to None to avoid double-drop
-    let cdb_inner = match cdb_file.reader.take() {
-        Some(cdb) => cdb,
-        None => {
-            // restore ownership of the original CdbFile back to the caller to avoid dropping prematurely
-            let _ = Box::into_raw(cdb_file);
-            return ptr::null_mut();
-        }
-    };
-
-    // Box the cdb to guarantee a stable heap address for iterator usage
-    let boxed_cdb = Box::new(cdb_inner);
-
-    // We no longer need cdb_file; drop it
-    drop(cdb_file);
-
-    Box::into_raw(Box::new(OwnedCdbIterator::new(boxed_cdb)))
+    Box::into_raw(Box::new(OwnedCdbIterator(iter)))
 }
 
 /// Get the next key-value pair from the iterator
@@ -421,7 +368,7 @@ pub unsafe extern "C" fn cdb_iterator_next(
 
     let iterator = unsafe { &mut *iter_ptr };
 
-    match iterator.next() {
+    match iterator.0.next() {
         Some(Ok((key, value))) => {
             // Allocate memory for key
             let key_len = key.len();
@@ -476,76 +423,28 @@ pub unsafe extern "C" fn cdb_iterator_free(iter_ptr: *mut OwnedCdbIterator) {
     }
 }
 
+// ---------------------------------------------------------------------------
 // Test-only helpers to allow Miri-friendly, in-memory FFI testing without touching the filesystem.
 // Exposed for integration tests and Miri; not intended for public API use.
+//
+// With the Arc-based design, a Cursor-backed `Cdb` can be wrapped in an Arc and
+// handed to `CdbIterator::from_arc`, reusing exactly the same iterator logic as the
+// production code path — no duplication needed.
 #[doc(hidden)]
 pub mod miri_test_helpers {
     use super::*;
     use std::io::Cursor;
 
-    // Owned iterator specialized for Cursor-backed Cdb for testing under Miri isolation.
-    pub struct OwnedCdbIteratorCursor {
-        cdb: Box<cdb64::Cdb<Cursor<Vec<u8>>, CdbHash>>,
-        current_pos: u64,
-        end_pos: u64,
-    }
+    /// Cursor-backed iterator for Miri / in-memory tests.
+    /// A thin newtype over `ArcCdbIterator<Cursor<Vec<u8>>, CdbHash>`.
+    pub struct OwnedCdbIteratorCursor(
+        cdb64::ArcCdbIterator<Cursor<Vec<u8>>, CdbHash>,
+    );
 
-    impl OwnedCdbIteratorCursor {
-        pub fn new(boxed_cdb: Box<cdb64::Cdb<Cursor<Vec<u8>>, CdbHash>>) -> Self {
-            let (start, end) = boxed_cdb.data_range();
-            OwnedCdbIteratorCursor {
-                cdb: boxed_cdb,
-                current_pos: start,
-                end_pos: end,
-            }
-        }
-
-        pub fn next(&mut self) -> Option<Result<(Vec<u8>, Vec<u8>), std::io::Error>> {
-            if self.current_pos >= self.end_pos {
-                return None;
-            }
-            match self.cdb.read_tuple_at(self.current_pos) {
-                Ok((key_len, val_len)) => {
-                    let record_data_offset = self.current_pos + 16;
-                    let total_record_len_with_header = 16 + key_len + val_len;
-                    if self
-                        .current_pos
-                        .saturating_add(total_record_len_with_header)
-                        > self.end_pos
-                    {
-                        return Some(Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            "Record extends beyond expected data end",
-                        )));
-                    }
-
-                    let mut key_buf = vec![0u8; key_len as usize];
-                    if key_len > 0 {
-                        if let Err(e) = self.cdb.read_exact_at_for_ffi(&mut key_buf, record_data_offset) {
-                            return Some(Err(e));
-                        }
-                    }
-
-                    let mut val_buf = vec![0u8; val_len as usize];
-                    if val_len > 0 {
-                        if let Err(e) = self.cdb.read_exact_at_for_ffi(&mut val_buf, record_data_offset + key_len) {
-                            return Some(Err(e));
-                        }
-                    }
-                    self.current_pos += total_record_len_with_header;
-                    Some(Ok((key_buf, val_buf)))
-                }
-                Err(e) => Some(Err(e)),
-            }
-        }
-    }
-
-    impl Drop for OwnedCdbIteratorCursor {
-        fn drop(&mut self) {
-            // Box will be dropped automatically
-        }
-    }
-
+    /// Create an `OwnedCdbIteratorCursor` from an already-boxed `Cdb<Cursor<…>>`.
+    ///
+    /// Takes ownership of the boxed Cdb, wraps it in `Arc`, and delegates to
+    /// `ArcCdbIterator::new` — identical to the production code path.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn cdb_iterator_new_from_boxed_cdb_cursor(
         cdb_ptr: *mut cdb64::Cdb<Cursor<Vec<u8>>, CdbHash>,
@@ -553,8 +452,10 @@ pub mod miri_test_helpers {
         if cdb_ptr.is_null() {
             return ptr::null_mut();
         }
-        let boxed = Box::from_raw(cdb_ptr);
-        Box::into_raw(Box::new(OwnedCdbIteratorCursor::new(boxed)))
+        let cdb = unsafe { Box::from_raw(cdb_ptr) };
+        let arc = Arc::new(*cdb);
+        let iter = cdb64::ArcCdbIterator::new(arc);
+        Box::into_raw(Box::new(OwnedCdbIteratorCursor(iter)))
     }
 
     #[unsafe(no_mangle)]
@@ -565,31 +466,37 @@ pub mod miri_test_helpers {
         if iter_ptr.is_null() || kv_out.is_null() {
             return CDB_ERROR_NULL_POINTER;
         }
-        let iterator = &mut *iter_ptr;
-        match iterator.next() {
+        let iterator = unsafe { &mut *iter_ptr };
+        match iterator.0.next() {
             Some(Ok((key, value))) => {
                 let key_len = key.len();
                 let key_boxed = key.into_boxed_slice();
                 let value_len = value.len();
                 let value_boxed = value.into_boxed_slice();
-                (*kv_out).key.ptr = Box::into_raw(key_boxed) as *const c_uchar;
-                (*kv_out).key.len = key_len;
-                (*kv_out).value.ptr = Box::into_raw(value_boxed) as *const c_uchar;
-                (*kv_out).value.len = value_len;
+                unsafe {
+                    (*kv_out).key.ptr = Box::into_raw(key_boxed) as *const c_uchar;
+                    (*kv_out).key.len = key_len;
+                    (*kv_out).value.ptr = Box::into_raw(value_boxed) as *const c_uchar;
+                    (*kv_out).value.len = value_len;
+                }
                 CDB_ITERATOR_HAS_NEXT
             }
             Some(Err(_)) => {
-                (*kv_out).key.ptr = ptr::null();
-                (*kv_out).key.len = 0;
-                (*kv_out).value.ptr = ptr::null();
-                (*kv_out).value.len = 0;
+                unsafe {
+                    (*kv_out).key.ptr = ptr::null();
+                    (*kv_out).key.len = 0;
+                    (*kv_out).value.ptr = ptr::null();
+                    (*kv_out).value.len = 0;
+                }
                 CDB_ERROR_IO
             }
             None => {
-                (*kv_out).key.ptr = ptr::null();
-                (*kv_out).key.len = 0;
-                (*kv_out).value.ptr = ptr::null();
-                (*kv_out).value.len = 0;
+                unsafe {
+                    (*kv_out).key.ptr = ptr::null();
+                    (*kv_out).key.len = 0;
+                    (*kv_out).value.ptr = ptr::null();
+                    (*kv_out).value.len = 0;
+                }
                 CDB_ITERATOR_FINISHED
             }
         }
@@ -598,7 +505,7 @@ pub mod miri_test_helpers {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn cdb_iterator_free_cursor(iter_ptr: *mut OwnedCdbIteratorCursor) {
         if !iter_ptr.is_null() {
-            drop(Box::from_raw(iter_ptr));
+            unsafe { drop(Box::from_raw(iter_ptr)) };
         }
     }
 }
