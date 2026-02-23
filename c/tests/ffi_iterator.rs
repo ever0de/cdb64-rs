@@ -1,4 +1,4 @@
-use std::{ffi::CString, ptr, slice};
+use std::{ffi::CString, slice};
 
 use tempfile::NamedTempFile;
 
@@ -6,7 +6,8 @@ use tempfile::NamedTempFile;
 // import symbols from the tested crate
 use cdb64_c::{
     cdb_writer_create, cdb_writer_put, cdb_writer_finalize, cdb_writer_free, cdb_open,
-    cdb_iterator_new, cdb_iterator_next, cdb_iterator_free, cdb_free_data,
+    cdb_get, cdb_close, cdb_free_data,
+    cdb_iterator_new, cdb_iterator_next, cdb_iterator_free,
     CdbData, CdbKeyValue, CDB_SUCCESS, CDB_ITERATOR_HAS_NEXT, CDB_ITERATOR_FINISHED,
 };
 
@@ -39,7 +40,7 @@ fn ffi_iterator_integration_roundtrip() {
         let reader = cdb_open(cpath.as_ptr());
         assert!(!reader.is_null());
 
-        // create iterator (takes ownership of reader)
+        // create iterator — reader remains valid (Arc-shared, not consumed)
         let iter = cdb_iterator_new(reader);
         assert!(!iter.is_null());
 
@@ -82,8 +83,66 @@ fn ffi_iterator_integration_roundtrip() {
         // free iterator
         cdb_iterator_free(iter);
 
+        // The reader (CdbFile) remains valid — cdb_iterator_new now clones the Arc
+        // instead of consuming the pointer, so we can still use it after the iterator is freed.
+        cdb_close(reader);
+
         // verify
         assert!(found.contains(&(b"key1".to_vec(), b"value1".to_vec())));
         assert!(found.contains(&(b"key2".to_vec(), b"value2".to_vec())));
+    }
+}
+
+/// Verify that the reader and iterator can be used simultaneously: `cdb_iterator_new`
+/// must not consume / invalidate the originating `CdbFile` pointer.
+#[test]
+fn ffi_reader_and_iterator_coexist() {
+    let tmp = NamedTempFile::new().expect("create temp file");
+    let path = tmp.path().to_owned();
+    let cpath = CString::new(path.to_string_lossy().as_bytes()).unwrap();
+
+    unsafe {
+        // Write
+        let writer = cdb_writer_create(cpath.as_ptr());
+        assert!(!writer.is_null());
+        let k = b"hello";
+        let v = b"world";
+        assert_eq!(cdb_writer_put(writer, k.as_ptr(), k.len(), v.as_ptr(), v.len()), CDB_SUCCESS);
+        assert_eq!(cdb_writer_finalize(writer), CDB_SUCCESS);
+        cdb_writer_free(writer);
+
+        // Open reader
+        let reader = cdb_open(cpath.as_ptr());
+        assert!(!reader.is_null());
+
+        // Create iterator — reader must still be valid afterwards
+        let iter = cdb_iterator_new(reader);
+        assert!(!iter.is_null());
+
+        // Use cdb_get on the reader while the iterator is alive
+        let mut value_out = cdb64_c::test_accessors::new_empty_data();
+        let rc = cdb_get(reader, k.as_ptr(), k.len(), &mut value_out as *mut CdbData);
+        assert_eq!(rc, CDB_SUCCESS);
+        assert!(!cdb64_c::test_accessors::get_data_ptr(&value_out).is_null());
+        let got = slice::from_raw_parts(
+            cdb64_c::test_accessors::get_data_ptr(&value_out),
+            cdb64_c::test_accessors::get_data_len(&value_out),
+        );
+        assert_eq!(got, b"world");
+        cdb_free_data(value_out);
+
+        // Close the reader first — the iterator still holds an Arc ref so the Cdb stays alive
+        cdb_close(reader);
+
+        // The iterator continues to work even after the CdbFile wrapper is closed
+        let mut kv = cdb64_c::test_accessors::new_empty_kv();
+        let rc = cdb_iterator_next(iter, &mut kv as *mut CdbKeyValue);
+        assert_eq!(rc, CDB_ITERATOR_HAS_NEXT);
+        let key_d = cdb64_c::test_accessors::take_key(&mut kv);
+        let val_d = cdb64_c::test_accessors::take_value(&mut kv);
+        cdb_free_data(key_d);
+        cdb_free_data(val_d);
+
+        cdb_iterator_free(iter);
     }
 }
