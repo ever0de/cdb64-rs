@@ -1,0 +1,23 @@
+cdb64/src/iterator.rs
+  d006513267816938 132,202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.5",
+  "base_commit_sha": "e41d8d30b8d36155c8d4e391a720fc7614b37406",
+  "prompts": {
+    "d006513267816938": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "0839e6ce-bd26-4489-97f7-9c2031785c55",
+        "model": "copilot/claude-sonnet-4.6"
+      },
+      "human_author": "Jiseok CHOI <jiseok.dev@gmail.com>",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 3,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
