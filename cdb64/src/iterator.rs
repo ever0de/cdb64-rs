@@ -63,7 +63,9 @@ fn advance<R: ReaderAt, H: std::hash::Hasher + Default>(
 
             let mut val_buf = vec![0u8; val_len as usize];
             if val_len > 0
-                && let Err(e) = cdb.reader.read_exact_at(&mut val_buf, data_offset + key_len)
+                && let Err(e) = cdb
+                    .reader
+                    .read_exact_at(&mut val_buf, data_offset + key_len)
             {
                 return Some(Err(e));
             }
@@ -124,7 +126,11 @@ impl<'cdb, R: ReaderAt, H: std::hash::Hasher + Default> CdbIterator<'cdb, R, H> 
     /// Creates an iterator that borrows the Cdb immutably for its lifetime.
     pub fn new(cdb: &'cdb Cdb<R, H>) -> Self {
         let (start, end) = compute_data_range(cdb);
-        CdbIterator { cdb, current_pos: start, end_pos: end }
+        CdbIterator {
+            cdb,
+            current_pos: start,
+            end_pos: end,
+        }
     }
 }
 
@@ -190,7 +196,11 @@ impl<R: ReaderAt, H: std::hash::Hasher + Default> ArcCdbIterator<R, H> {
     /// This does **not** consume `cdb`; callers retain their own `Arc` reference.
     pub fn new(cdb: Arc<Cdb<R, H>>) -> Self {
         let (start, end) = compute_data_range(&cdb);
-        ArcCdbIterator { cdb, current_pos: start, end_pos: end }
+        ArcCdbIterator {
+            cdb,
+            current_pos: start,
+            end_pos: end,
+        }
     }
 }
 
