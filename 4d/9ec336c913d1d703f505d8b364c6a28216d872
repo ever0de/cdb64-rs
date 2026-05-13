@@ -1,0 +1,23 @@
+c/src/lib.rs
+  s_446faf8e6818ad::t_c725beff6d9c3f 448
+c/Cargo.toml
+  s_446faf8e6818ad::t_9ad26333777f57 9-11,17
+cdb64/src/iterator.rs
+  s_446faf8e6818ad::t_6929a2ccbaa9a7 47-67,69,76-95,102-111,113,118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "4d9ec336c913d1d703f505d8b364c6a28216d872",
+  "prompts": {},
+  "sessions": {
+    "s_446faf8e6818ad": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "6102e4aa-d9c3-4b09-a99a-8ac754a8183a",
+        "model": "gpt-5-mini"
+      },
+      "human_author": "Jiseok CHOI <jiseok.dev@gmail.com>"
+    }
+  }
+}
