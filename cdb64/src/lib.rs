@@ -97,7 +97,7 @@ mod writer;
 // re-exports
 pub use cdb::Cdb;
 pub use hash::CdbHash;
-pub use iterator::CdbIterator;
+pub use iterator::{ArcCdbIterator, CdbIterator};
 pub use util::ReaderAt;
 pub use writer::CdbWriter;
 

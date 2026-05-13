@@ -16,6 +16,7 @@ use crate::util::{ReaderAt, read_tuple};
 /// The header consists of 256 entries, each specifying the offset and length
 /// of a hash table. Each of these (offset, length) pairs consists of two u64 values,
 /// so the total size is 256 * 2 * 8 = 4096 bytes.
+#[doc(hidden)]
 pub const HEADER_SIZE: u64 = 256 * 8 * 2; // 256 tables, each with 2 u64s (offset, length)
 
 /// Represents a single entry in the header's hash table.

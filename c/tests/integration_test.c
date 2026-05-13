@@ -197,13 +197,10 @@ void test_iterator() {
     cdb_CdbFile* reader = cdb_open(test_file);
     assert(reader != NULL);
     
-    // Create iterator (this transfers ownership of reader to iterator)
+    // cdb_iterator_new clones the internal Arc; reader remains valid and must be freed separately.
     cdb_OwnedCdbIterator* iterator = cdb_iterator_new(reader);
     assert(iterator != NULL);
     printf("   Iterator created successfully.\n");
-    
-    // Note: reader should not be used after cdb_iterator_new()
-    // reader = NULL; // Set to NULL to avoid accidental use
     
     // Iterate through all entries
     printf("3. Iterating through entries...\n");
@@ -250,6 +247,8 @@ void test_iterator() {
     // Clean up
     cdb_iterator_free(iterator);
     printf("   Iterator freed.\n");
+    cdb_close(reader);
+    printf("   Reader closed.\n");
     
     // Remove test file
     remove(test_file);
@@ -290,6 +289,7 @@ void test_iterator_empty_database() {
     
     // Clean up
     cdb_iterator_free(iterator);
+    cdb_close(reader);
     remove(test_file);
     
     printf("=== Empty Database Iterator Test Completed! ===\n\n");

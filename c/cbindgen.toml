@@ -14,4 +14,12 @@ include = [
 	"CdbData",
 	# Add any other types that need to be exposed in the C header
 ]
+# Exclude internal test-only helpers that use Rust generic types (Cdb<Cursor<...>>)
+# which cannot be represented in plain C.
+exclude = [
+	"OwnedCdbIteratorCursor",
+	"cdb_iterator_new_from_boxed_cdb_cursor",
+	"cdb_iterator_next_cursor",
+	"cdb_iterator_free_cursor",
+]
 prefix = "cdb_" # Optional: prefix for all generated C functions and types

@@ -4,11 +4,18 @@ version = { workspace = true }
 edition = { workspace = true }
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+test-utils = []
 
 [dependencies]
 cdb64 = { workspace = true }
 libc = "0.2"
+
+[dev-dependencies]
+cdb64_c = { path = ".", features = ["test-utils"] }
+tempfile = "3"
 
 [build-dependencies]
 cbindgen = "0.29"

@@ -103,6 +103,23 @@ jobs:
         working-directory: ./c
         run: make test
 
+  c-leak-check:
+    name: C Bindings – LeakSanitizer
+    runs-on: ubuntu-latest
+    needs: c
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+      - name: Install nightly Rust + rust-src
+        run: |
+          rustup toolchain install nightly --profile minimal --no-self-update
+          rustup component add --toolchain nightly rust-src
+      - uses: Swatinem/rust-cache@v2
+      - name: Build and run C tests with ASan + LSan
+        working-directory: ./c
+        run: make test-asan
+
   python:
     name: Build Python
     runs-on: ubuntu-latest
