@@ -213,7 +213,7 @@ pub unsafe extern "C" fn cdb_free_data(data: CdbData) {
         // Use ptr::slice_from_raw_parts_mut to build the correct `*mut [u8]` for Box::from_raw.
         unsafe {
             let ptr = data.ptr as *mut u8;
-            let len = data.len as usize;
+            let len = data.len;
             let slice_ptr = std::ptr::slice_from_raw_parts_mut(ptr, len);
             drop(Box::from_raw(slice_ptr));
         }
@@ -281,14 +281,20 @@ pub mod test_accessors {
 
     // Take ownership of the key/value CdbData out of the kv struct and replace with nulls
     pub fn take_key(kv: &mut CdbKeyValue) -> CdbData {
-        let taken = CdbData { ptr: kv.key.ptr, len: kv.key.len };
+        let taken = CdbData {
+            ptr: kv.key.ptr,
+            len: kv.key.len,
+        };
         kv.key.ptr = ptr::null();
         kv.key.len = 0;
         taken
     }
 
     pub fn take_value(kv: &mut CdbKeyValue) -> CdbData {
-        let taken = CdbData { ptr: kv.value.ptr, len: kv.value.len };
+        let taken = CdbData {
+            ptr: kv.value.ptr,
+            len: kv.value.len,
+        };
         kv.value.ptr = ptr::null();
         kv.value.len = 0;
         taken
@@ -296,14 +302,23 @@ pub mod test_accessors {
 
     pub fn new_empty_kv() -> CdbKeyValue {
         CdbKeyValue {
-            key: CdbData { ptr: ptr::null(), len: 0 },
-            value: CdbData { ptr: ptr::null(), len: 0 },
+            key: CdbData {
+                ptr: ptr::null(),
+                len: 0,
+            },
+            value: CdbData {
+                ptr: ptr::null(),
+                len: 0,
+            },
         }
     }
 
     /// Create an empty `CdbData` suitable for passing to `cdb_get` as an out-parameter.
     pub fn new_empty_data() -> CdbData {
-        CdbData { ptr: ptr::null(), len: 0 }
+        CdbData {
+            ptr: ptr::null(),
+            len: 0,
+        }
     }
 
     pub fn get_data_ptr(data: &CdbData) -> *const c_uchar {
@@ -437,9 +452,7 @@ pub mod miri_test_helpers {
 
     /// Cursor-backed iterator for Miri / in-memory tests.
     /// A thin newtype over `ArcCdbIterator<Cursor<Vec<u8>>, CdbHash>`.
-    pub struct OwnedCdbIteratorCursor(
-        cdb64::ArcCdbIterator<Cursor<Vec<u8>>, CdbHash>,
-    );
+    pub struct OwnedCdbIteratorCursor(cdb64::ArcCdbIterator<Cursor<Vec<u8>>, CdbHash>);
 
     /// Create an `OwnedCdbIteratorCursor` from an already-boxed `Cdb<Cursor<…>>`.
     ///
