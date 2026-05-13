@@ -183,8 +183,7 @@ fn rust_write_c_read() {
     ];
 
     {
-        let mut writer =
-            CdbWriter::<_, CdbHash>::create(&path).expect("create writer");
+        let mut writer = CdbWriter::<_, CdbHash>::create(&path).expect("create writer");
         for (k, v) in entries {
             writer.put(k, v).expect("put");
         }
@@ -245,7 +244,11 @@ fn rust_write_c_read() {
         cdb_iterator_free(iter);
         cdb_close(reader);
 
-        assert_eq!(collected.len(), entries.len(), "iterator entry count mismatch");
+        assert_eq!(
+            collected.len(),
+            entries.len(),
+            "iterator entry count mismatch"
+        );
         for (k, v) in entries {
             assert!(
                 collected.contains(&(k.to_vec(), v.to_vec())),
@@ -305,11 +308,13 @@ fn c_write_rust_read() {
     }
 
     // Iterator
-    let collected: Vec<(Vec<u8>, Vec<u8>)> = cdb
-        .iter()
-        .map(|r| r.expect("iterator error"))
-        .collect();
-    assert_eq!(collected.len(), entries.len(), "iterator entry count mismatch");
+    let collected: Vec<(Vec<u8>, Vec<u8>)> =
+        cdb.iter().map(|r| r.expect("iterator error")).collect();
+    assert_eq!(
+        collected.len(),
+        entries.len(),
+        "iterator entry count mismatch"
+    );
     for (k, v) in entries {
         assert!(
             collected.contains(&(k.to_vec(), v.to_vec())),
@@ -362,7 +367,10 @@ fn duplicate_keys_ffi_vs_rust() {
             cdb64_c::test_accessors::get_data_ptr(&out),
             cdb64_c::test_accessors::get_data_len(&out),
         );
-        assert_eq!(got, b"first", "cdb_get should return the first inserted value");
+        assert_eq!(
+            got, b"first",
+            "cdb_get should return the first inserted value"
+        );
         cdb_free_data(out);
         cdb_close(reader);
     }
@@ -370,7 +378,10 @@ fn duplicate_keys_ffi_vs_rust() {
     // ── Rust: Cdb::get returns first; iterator returns both ──────────────────
     let cdb = Cdb::<_, CdbHash>::open(&path).expect("open");
     let first = cdb.get(b"dup").expect("get").expect("key must exist");
-    assert_eq!(first, b"first", "Rust Cdb::get should return the first value");
+    assert_eq!(
+        first, b"first",
+        "Rust Cdb::get should return the first value"
+    );
 
     let all: Vec<_> = cdb
         .iter()
@@ -390,13 +401,8 @@ fn duplicate_keys_ffi_vs_rust() {
 fn in_memory_rust_write_verify_arc_iterator() {
     use std::sync::Arc;
 
-    let mut writer =
-        CdbWriter::<_, CdbHash>::new(Cursor::new(Vec::new())).expect("new writer");
-    let pairs: &[(&[u8], &[u8])] = &[
-        (b"x", b"X"),
-        (b"y", b"Y"),
-        (b"bin", b"\x00\xFF\x7F"),
-    ];
+    let mut writer = CdbWriter::<_, CdbHash>::new(Cursor::new(Vec::new())).expect("new writer");
+    let pairs: &[(&[u8], &[u8])] = &[(b"x", b"X"), (b"y", b"Y"), (b"bin", b"\x00\xFF\x7F")];
     for (k, v) in pairs {
         writer.put(k, v).expect("put");
     }
