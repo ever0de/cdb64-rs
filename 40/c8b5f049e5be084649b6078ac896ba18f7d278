@@ -1,0 +1,32 @@
+.github/workflows/ci.yaml
+  s_11927d84925759::t_0c5355d41d2e5f 106-122
+c/tests/integration_test.c
+  s_11927d84925759::t_c5819cac5dd928 200,250-251,292
+c/Makefile
+  s_11927d84925759::t_185e7acf4d9d01 6,13-14,17,23,41-72,77
+c/cbindgen.toml
+  s_11927d84925759::t_ec9b8ecedf74e2 23
+  s_11927d84925759::t_b3795a493ae8ca 17-22,24
+c/tests/ffi_iterator.rs
+  s_11927d84925759::t_7f5cb993037639 158-307,309-436
+  s_11927d84925759::t_e034a56c518500 308
+  s_11927d84925759::t_2680b8dd1a221c 1,3
+cdb64/src/util.rs
+  ai_agent 113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "40c8b5f049e5be084649b6078ac896ba18f7d278",
+  "prompts": {},
+  "sessions": {
+    "s_11927d84925759": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "692625c0-ec28-4568-a04a-36838ddd77b9",
+        "model": "gpt-5-mini"
+      },
+      "human_author": "Jiseok CHOI <jiseok.dev@gmail.com>"
+    }
+  }
+}
