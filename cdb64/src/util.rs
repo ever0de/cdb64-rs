@@ -105,7 +105,11 @@ pub(crate) fn read_tuple<R: ReaderAt + ?Sized>(reader: &R, offset: u64) -> Resul
 
 /// Writes two u64 values (a tuple) to a `Write` stream.
 /// The values are encoded in little-endian format, 8 bytes each.
-pub(crate) fn write_tuple<W: Write + ?Sized>(writer: &mut W, first: u64, second: u64) -> Result<()> {
+pub(crate) fn write_tuple<W: Write + ?Sized>(
+    writer: &mut W,
+    first: u64,
+    second: u64,
+) -> Result<()> {
     writer.write_all(&first.to_le_bytes())?;
     writer.write_all(&second.to_le_bytes())?;
     Ok(())

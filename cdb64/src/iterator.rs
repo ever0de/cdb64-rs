@@ -50,7 +50,7 @@ fn advance<R: ReaderAt, H: std::hash::Hasher + Default>(
                     return Some(Err(io::Error::new(
                         ErrorKind::InvalidData,
                         "data offset overflow",
-                    )))
+                    )));
                 }
             };
             let record_len = match 16u64
@@ -62,11 +62,14 @@ fn advance<R: ReaderAt, H: std::hash::Hasher + Default>(
                     return Some(Err(io::Error::new(
                         ErrorKind::InvalidData,
                         "record length overflow",
-                    )))
+                    )));
                 }
             };
 
-            if current_pos.checked_add(record_len).map_or(true, |end| end > end_pos) {
+            if current_pos
+                .checked_add(record_len)
+                .is_none_or(|end| end > end_pos)
+            {
                 return Some(Err(io::Error::new(
                     ErrorKind::InvalidData,
                     "Record extends beyond expected data end",
@@ -79,7 +82,7 @@ fn advance<R: ReaderAt, H: std::hash::Hasher + Default>(
                     return Some(Err(io::Error::new(
                         ErrorKind::InvalidData,
                         "key length too large for this platform",
-                    )))
+                    )));
                 }
             };
             let val_len_usize = match usize::try_from(val_len) {
@@ -88,7 +91,7 @@ fn advance<R: ReaderAt, H: std::hash::Hasher + Default>(
                     return Some(Err(io::Error::new(
                         ErrorKind::InvalidData,
                         "value length too large for this platform",
-                    )))
+                    )));
                 }
             };
 
@@ -105,7 +108,7 @@ fn advance<R: ReaderAt, H: std::hash::Hasher + Default>(
                     return Some(Err(io::Error::new(
                         ErrorKind::InvalidData,
                         "value offset overflow",
-                    )))
+                    )));
                 }
             };
             let mut val_buf = vec![0u8; val_len_usize];
