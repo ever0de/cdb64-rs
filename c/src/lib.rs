@@ -257,7 +257,9 @@ pub struct OwnedCdbIterator(ArcCdbIterator<File, CdbHash>);
 
 // ---------------------------------------------------------------------------
 // Accessors to interact with CdbData/CdbKeyValue from integration tests.
-// Kept doc-hidden to avoid polluting public API surface.
+// Gated behind the `test-utils` Cargo feature so they are not compiled into
+// production cdylib builds.
+#[cfg(feature = "test-utils")]
 #[doc(hidden)]
 pub mod test_accessors {
     use super::*;
@@ -443,7 +445,7 @@ pub unsafe extern "C" fn cdb_iterator_free(iter_ptr: *mut OwnedCdbIterator) {
 // Exposed for integration tests and Miri; not intended for public API use.
 //
 // With the Arc-based design, a Cursor-backed `Cdb` can be wrapped in an Arc and
-// handed to `CdbIterator::from_arc`, reusing exactly the same iterator logic as the
+// passed to `ArcCdbIterator::new`, reusing exactly the same iterator logic as the
 // production code path — no duplication needed.
 #[doc(hidden)]
 pub mod miri_test_helpers {

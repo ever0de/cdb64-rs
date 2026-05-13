@@ -44,32 +44,78 @@ fn advance<R: ReaderAt, H: std::hash::Hasher + Default>(
 
     match read_tuple(&cdb.reader, *current_pos) {
         Ok((key_len, val_len)) => {
-            let data_offset = *current_pos + 16;
-            let record_len = 16 + key_len + val_len;
+            let data_offset = match current_pos.checked_add(16) {
+                Some(v) => v,
+                None => {
+                    return Some(Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "data offset overflow",
+                    )))
+                }
+            };
+            let record_len = match 16u64
+                .checked_add(key_len)
+                .and_then(|n| n.checked_add(val_len))
+            {
+                Some(v) => v,
+                None => {
+                    return Some(Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "record length overflow",
+                    )))
+                }
+            };
 
-            if current_pos.saturating_add(record_len) > end_pos {
+            if current_pos.checked_add(record_len).map_or(true, |end| end > end_pos) {
                 return Some(Err(io::Error::new(
                     ErrorKind::InvalidData,
                     "Record extends beyond expected data end",
                 )));
             }
 
-            let mut key_buf = vec![0u8; key_len as usize];
+            let key_len_usize = match usize::try_from(key_len) {
+                Ok(v) => v,
+                Err(_) => {
+                    return Some(Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "key length too large for this platform",
+                    )))
+                }
+            };
+            let val_len_usize = match usize::try_from(val_len) {
+                Ok(v) => v,
+                Err(_) => {
+                    return Some(Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "value length too large for this platform",
+                    )))
+                }
+            };
+
+            let mut key_buf = vec![0u8; key_len_usize];
             if key_len > 0
                 && let Err(e) = cdb.reader.read_exact_at(&mut key_buf, data_offset)
             {
                 return Some(Err(e));
             }
 
-            let mut val_buf = vec![0u8; val_len as usize];
+            let val_offset = match data_offset.checked_add(key_len) {
+                Some(v) => v,
+                None => {
+                    return Some(Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "value offset overflow",
+                    )))
+                }
+            };
+            let mut val_buf = vec![0u8; val_len_usize];
             if val_len > 0
-                && let Err(e) = cdb
-                    .reader
-                    .read_exact_at(&mut val_buf, data_offset + key_len)
+                && let Err(e) = cdb.reader.read_exact_at(&mut val_buf, val_offset)
             {
                 return Some(Err(e));
             }
 
+            // Safety: checked_add(record_len) <= end_pos was verified above.
             *current_pos += record_len;
             Some(Ok((key_buf, val_buf)))
         }
