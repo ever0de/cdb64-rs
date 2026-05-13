@@ -1,5 +1,5 @@
 TARGET_DIR := ../target
-RUST_TARGET_TRIPLE := $(shell rustc -vV | sed -n 's/host: //p') # Or set your specific target
+RUST_TARGET_TRIPLE := $(strip $(shell rustc -vV | sed -n 's/host: //p')) # Or set your specific target
 LIB_NAME := libcdb64_c
 HEADER_NAME := cdb64.h
 C_TEST_RUNNER_NAME := integration_test
@@ -14,7 +14,7 @@ ifeq ($(shell uname -s),Darwin)
     ASAN_ENV := MallocNanoZone=0 ASAN_OPTIONS=detect_leaks=1
 else
     LIB_SUFFIX := so
-    ASAN_ENV := ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=suppressions=/dev/null
+    ASAN_ENV := ASAN_OPTIONS=detect_leaks=1
 endif
 
 RUST_LIB_PATH := $(TARGET_DIR)/debug/$(LIB_NAME).$(LIB_SUFFIX) # Assuming debug build for now

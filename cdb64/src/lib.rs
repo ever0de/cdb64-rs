@@ -100,10 +100,6 @@ pub use hash::CdbHash;
 pub use iterator::{ArcCdbIterator, CdbIterator};
 pub use util::ReaderAt;
 pub use writer::CdbWriter;
-// Hidden helper re-exports for FFI crate use (not part of public API surface).
-// Note: `read_tuple`/`write_tuple` and `HEADER_SIZE` are made public within the crate
-// to allow the `c` FFI crate to reuse them without exposing them in the primary docs.
-// The actual `pub` visibility for these helpers is applied in their defining modules.
 
 /// Errors that can occur when working with CDB databases.
 #[derive(Debug, thiserror::Error)]

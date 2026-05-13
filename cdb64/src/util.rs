@@ -81,11 +81,7 @@ impl ReaderAt for std::io::Cursor<Vec<u8>> {
 
 /// Reads two u64 values (a tuple) from a `ReaderAt` at the given offset.
 /// The values are expected to be encoded in little-endian format, 8 bytes each.
-/// Read two u64 values (8 bytes each) from a ReaderAt at offset.
-///
-/// This function is normally crate-internal, but we allow restricted re-export for FFI use.
-#[doc(hidden)]
-pub fn read_tuple<R: ReaderAt + ?Sized>(reader: &R, offset: u64) -> Result<(u64, u64)> {
+pub(crate) fn read_tuple<R: ReaderAt + ?Sized>(reader: &R, offset: u64) -> Result<(u64, u64)> {
     let mut buffer = [0u8; 16]; // Buffer for two u64 values
     reader.read_exact_at(&mut buffer, offset)?;
 
@@ -109,8 +105,7 @@ pub fn read_tuple<R: ReaderAt + ?Sized>(reader: &R, offset: u64) -> Result<(u64,
 
 /// Writes two u64 values (a tuple) to a `Write` stream.
 /// The values are encoded in little-endian format, 8 bytes each.
-#[doc(hidden)]
-pub fn write_tuple<W: Write + ?Sized>(writer: &mut W, first: u64, second: u64) -> Result<()> {
+pub(crate) fn write_tuple<W: Write + ?Sized>(writer: &mut W, first: u64, second: u64) -> Result<()> {
     writer.write_all(&first.to_le_bytes())?;
     writer.write_all(&second.to_le_bytes())?;
     Ok(())

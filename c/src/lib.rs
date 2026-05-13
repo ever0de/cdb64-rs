@@ -458,8 +458,7 @@ pub mod miri_test_helpers {
     ///
     /// Takes ownership of the boxed Cdb, wraps it in `Arc`, and delegates to
     /// `ArcCdbIterator::new` — identical to the production code path.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn cdb_iterator_new_from_boxed_cdb_cursor(
+    pub unsafe fn cdb_iterator_new_from_boxed_cdb_cursor(
         cdb_ptr: *mut cdb64::Cdb<Cursor<Vec<u8>>, CdbHash>,
     ) -> *mut OwnedCdbIteratorCursor {
         if cdb_ptr.is_null() {
@@ -471,8 +470,7 @@ pub mod miri_test_helpers {
         Box::into_raw(Box::new(OwnedCdbIteratorCursor(iter)))
     }
 
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn cdb_iterator_next_cursor(
+    pub unsafe fn cdb_iterator_next_cursor(
         iter_ptr: *mut OwnedCdbIteratorCursor,
         kv_out: *mut CdbKeyValue,
     ) -> c_int {
@@ -515,8 +513,7 @@ pub mod miri_test_helpers {
         }
     }
 
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn cdb_iterator_free_cursor(iter_ptr: *mut OwnedCdbIteratorCursor) {
+    pub unsafe fn cdb_iterator_free_cursor(iter_ptr: *mut OwnedCdbIteratorCursor) {
         if !iter_ptr.is_null() {
             unsafe { drop(Box::from_raw(iter_ptr)) };
         }
